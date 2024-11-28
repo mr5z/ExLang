@@ -6,14 +6,17 @@
 - should we make everything an object? (Java: will you ever learn?)
 
 # Proposals
+- to declare class/interface/variable, you use the keyword `def`
 - no operator overloading, devs are free to alias the function names with whatever symbol or combination of symbols
     - when a function has an alias and parameterless, the alias cannot appear on its right side
 - no struct/class distinction, i.e., behavior depends on implementation
 - by default, parameters are immutable
 - function overloading allows having the same function name with different return type
-- enumerating/looping an object is allowed
+- enumerating/looping an object is allowed ...really?
 - when working with attributes, devs have access to code metadata and compiler contexts
 - discriminated union is separated by comma, i.e., `def x: TypeA, TypeB, TypeC`
+- accessing enum is similar to Swift, i.e., `.North, .South, .East, .West`
+- 
 
 
 ```
