@@ -13,6 +13,7 @@
 - function overloading allows having the same function name with different return type
 - enumerating/looping an object is allowed
 - when working with attributes, devs have access to code metadata and compiler contexts
+- discriminated union is separated by comma, i.e., `def x: TypeA, TypeB, TypeC`
 
 
 ```
