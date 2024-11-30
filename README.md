@@ -51,7 +51,7 @@
 # Variable Declaration
 ```
 // denotes x is an immutable variable with a type of a Numeric variant with an initial value of 0
-def x = 0 
+def x = 0
 ```
 
 # Function Aliases
@@ -101,8 +101,26 @@ def UserRole: Role { this -> // type of 'this' is Self but manually named to 'th
 ```
 
 # Mutability
-Requires variables to be explicitly declared as mutable
+Mutability are contextual:
+
+1. Local variables are mutable by default
+2. Parameters are immutable by default
+3. Instance fields are mutable by default
+
 ```
+
+// #1
+def doSomething() {
+
+    def a: i32 = 0
+    a = 1  // ok
+
+    @Immutable
+    def b: i32 = 0
+    b = 1  // error
+}
+
+// #2
 def doSomething(
     @Mutable
     a: i32,
@@ -111,6 +129,20 @@ def doSomething(
     a = 0 // ok!
     b = 1 // error
 }
+
+// #3
+def Rectangle: Shape {
+    @Public
+    def area: i32 -> width * length
+
+    @Public
+    @Immutable
+    def name: String?
+}
+
+def rect = Rectangle()
+rect.area = 0      // error
+rect.name = "Box!" // ok
 ```
 
 # Const
