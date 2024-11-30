@@ -95,6 +95,28 @@ contract User { this -> // type of 'this' is Self but manually named to 'this'
     // ...
 }
 ```
+
+# Mutability
+```
+def doSomething(
+    @Mutable
+    a: i32,
+    b: i32) {
+
+    a = 0 // error
+    b = 1 // ok!
+}
+```
+
+# Const
+```
+@Const
+def doSomething() {
+    self._position += 1 // error (mutating instance field)
+    def i = 4           // (local variable)
+    i = 2               // ok!
+}
+```
         
 # Standard library code example
 
