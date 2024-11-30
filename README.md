@@ -148,7 +148,7 @@ rect.name = "Box!" // ok
 # Const
 Marking a function const disallows any mutation in its entire execution path
 ```
-...
+// ...
 @Private
 def _position: u32
 
