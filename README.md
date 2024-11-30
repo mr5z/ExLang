@@ -146,13 +146,27 @@ rect.name = "Box!" // ok
 ```
 
 # Const
+Marking a function const disallows any mutation in its entire execution path
 ```
+...
+@Private
+def _position: u32
+
 @Const
 def doSomething() {
     self._position += 1 // error (mutating instance field)
     def i = 4           // (local variable)
     i = 2               // ok!
+
+    advance()           // error (function must be marked const too)
 }
+
+def advance() {
+    if _position <= _text.length {
+        _position ++
+    }
+}
+
 ```
         
 # Standard library code example
