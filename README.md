@@ -50,7 +50,7 @@
 
 # Variable Declaration
 ```
-// denotes x is a immutable variable with a type of a Numeric variant with an initial value of 0
+// denotes x is an immutable variable with a type of a Numeric variant with an initial value of 0
 def x = 0 
 ```
 
@@ -91,8 +91,12 @@ contract Role { self ->
     }
 }
 
-contract User { this -> // type of 'this' is Self but manually named to 'this'
-    // ...
+def UserRole: Role { this -> // type of 'this' is Self but manually named to 'this'
+    
+    // Self is now UserRole
+    def assign(other: UserRole): UserRole {
+        // ...
+    }
 }
 ```
 
