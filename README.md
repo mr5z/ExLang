@@ -1,26 +1,99 @@
 
 # Questions
-- what is the difference between an immutable and a constant object?
-- are primitive types object?
-- should we have distinction between primitive types vs object types?
-- should we make everything an object? (Java: will you ever learn?)
+- What is the difference between an immutable and a constant object?
+- Are primitive types object?
+- Should we have distinction between primitive types vs object types?
+- Should we make everything an object? (Java: will you ever learn?)
 
 # Proposals
-- to declare class/interface/variable, you use the keyword `def`
-- no operator overloading, devs are free to alias the function names with whatever symbol or combination of symbols
-    - when a function has an alias and parameterless, the alias cannot appear on its right side
-- no struct/class distinction, i.e., behavior depends on implementation
-- by default, parameters are immutable
-- function overloading allows having the same function name with different return type
-- enumerating/looping an object is allowed ...really?
-- when working with attributes, devs have access to code metadata and compiler contexts
-- discriminated union is separated by comma, i.e., `def x: TypeA, TypeB, TypeC`
-- accessing enum is similar to Swift, i.e., `.North, .South, .East, .West`
-- 
+- Use keyword `def` for all declarations (class/interface/variable)
+  - Simplifies syntax and learning curve
+  - Compiler infers the declaration type from context
+
+- No operator overloading, but allow function aliasing
+  - Functions can have symbolic aliases (e.g., @Alias("+"))
+  - When a function has an alias and is parameterless, the alias cannot appear on its right side
+  - Maintains readability while providing flexibility
+
+- No struct/class distinction
+  - Behavior depends on implementation
+  - Simplifies type system
+
+- Parameters are immutable by default
+  - Functions marked with @Const guarantee no mutations in their execution path
+  - Provides clear guarantees about data modification
+
+- Function overloading allows different return types
+  - Return type is part of the function signature
+  - Type inference determines correct version based on context
+
+- Discriminated unions use comma syntax
+  - `def x: TypeA, TypeB, TypeC`
+  - Simpler than complex sum types
+
+- Enum-style access uses dot notation
+  - `.North, .South, .East, .West`
+  - Consistent with other member access
+
+- Attribute system provides compiler metadata access
+  - Attributes can influence compilation
+  - Provides extensibility without syntax complexity
+
+- Module system
+  - Explicit imports/exports
+  - Clear dependency management
+
+- Pattern matching for discriminated unions
+  - Essential for working with union types
+  - Ensures type-safe handling of variants
 
 
+# Variable Declaration
 ```
-def x = 0 // denotes x is a immutable variable with a type of a Number variant with a value of 0
+// denotes x is a immutable variable with a type of a Numeric variant with an initial value of 0
+def x = 0 
+```
+
+# Function Aliases
+```
+contract Numeric {
+    // ...
+    @Alias("+")
+    def plus(other: Self): Self = self + other
+    // ...
+}
+
+def u8: Numeric {
+    // ...
+}
+
+def n: u8 = 0
+n = n.plus(1)
+n = n + 1 // possible due to function alias
+```
+
+# Type Inference
+```
+// doSomething() is able to return both i8 and Stream<i8> based on the inferred type
+def result: i8 = doSomething()
+def resultList: Stream<i8> = doSomething()
+```
+
+# Self and access to implementing class type
+```
+contract Role { self ->
+
+    // Self: type of implementing class
+    // self: name of variable instance, aka 'this',
+    //       and can be renamed to whatever you want as long as you define it above
+    def assign(other: Self): Self {
+        // ...
+    }
+}
+
+contract User { this -> // type of 'this' is Self but manually named to 'this'
+    // ...
+}
 ```
         
 # Syntax Examples
