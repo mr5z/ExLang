@@ -101,14 +101,15 @@ def UserRole: Role { this -> // type of 'this' is Self but manually named to 'th
 ```
 
 # Mutability
+Requires variables to be explicitly declared as mutable
 ```
 def doSomething(
     @Mutable
     a: i32,
     b: i32) {
 
-    a = 0 // error
-    b = 1 // ok!
+    a = 0 // ok!
+    b = 1 // error
 }
 ```
 
