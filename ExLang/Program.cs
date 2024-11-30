@@ -123,7 +123,7 @@ public class Lexer(string text)
 
     private Location CurrentLocation => new(_line, _column);
 
-    private bool IsSymbolStart(char c) => "@:=,.<>(){}[]+-*/".Contains(c);
+    private static bool IsSymbolStart(char c) => "@:=,.<>(){}[]+-*/".Contains(c);
 
     // Implementation of reading methods...
     private Whitespace ReadWhitespace()
@@ -300,21 +300,59 @@ public class Lexer(string text)
 
 internal class Program
 {
+    /*
+    contract
+        attribute specifier
+            open parenthesis
+                string literal
+            close parenthesis
+        definition start
+            function name
+                open parenthesis
+                    parameter name
+                    colon
+                    parameter type
+                close parenthesis
+            colon
+            return type
+    */
     static void Main(string[] args)
     {
-        // Example usage
         var source = @"
             contract Numeric { self ->
-                @Alias(""+""
+                @Alias(""+"")
                 def plus(other: Self): Self
             }
         ";
 
         var lexer = new Lexer(source);
+        var indent = 0;
         Token? token;
+        
         while ((token = lexer.NextToken()) != null)
         {
-            Console.WriteLine($"{token.GetType().Name}: {token.Value} at {token.Location}");
+            // Skip whitespace and comments in the output
+            if (token is Whitespace or Comment)
+                continue;
+
+            // Adjust indentation based on braces
+            if (token is Symbol { Type: SymbolType.LBrace })
+                indent++;
+            else if (token is Symbol { Type: SymbolType.RBrace })
+                indent--;
+
+            // Print the token with proper indentation
+            var indentation = new string(' ', indent * 2);
+            var tokenType = token switch
+            {
+                Keyword k => k.Type.ToString(),
+                Symbol s => s.Type.ToString(),
+                Identifier => "Identifier",
+                Literal l => $"Literal({l.Type})",
+                _ => token.GetType().Name
+            };
+
+            Console.WriteLine($"{indentation}{tokenType}: {token.Value}");
         }
     }
 } 

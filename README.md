@@ -96,7 +96,7 @@ contract User { this -> // type of 'this' is Self but manually named to 'this'
 }
 ```
         
-# Syntax Examples
+# Standard library code example
 
 ```
 attribute Public { context -> // context: Context
