@@ -198,8 +198,8 @@ attribute Public { context -> // context: Context
     init() {
         // communicate with compiler
         def scope = context.getScope()
-        scope.allow([.external, .internal])
-        scope.assemblyAccess([.all])
+        scope.allow([.External, .Internal])
+        scope.assemblyAccess([.All])
     }
 }
         
