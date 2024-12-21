@@ -168,6 +168,28 @@ def advance() {
 }
 
 ```
+
+# Tagging
+Standard library includes a way to tag function based on compute bounds, i.e., CPU, IO, ...or make your own tag!
+This gives the developer a high level overview on how each of their function can be tied together wherein linter would warn them about mixing tags that might cause some performance issues down the line.
+
+```
+@Tag(.IO)
+def requestUserInfo(id: u32): User {
+    // network request
+}
+
+@Tag(.CPU)
+def crunchSomeNumber(data: Vec<f32>): f32 {
+    // math-heavy computation
+}
+
+// linter would warn about mixing bounds
+def doWork() {
+    def user = requestUserInfo(userId)
+    def x = crunchSomeNumber(data)
+}
+```
         
 # Standard library code example
 
