@@ -169,6 +169,34 @@ def advance() {
 
 ```
 
+# Conditional Statement
+`if` statement is equivalent to `is`, `else` is `no`, and there is no `else if`
+```
+is x == y {
+    doThis()
+}
+no {
+    doThat()
+}
+
+
+switch enumValue {
+    case .North {
+        turn(90)
+    }
+    case .South {
+        turn(270)
+    }
+    case .East {
+        turn(0)
+    }
+    case .West {
+        turn(180)
+    }
+}
+
+```
+
 # Tagging
 Standard library includes a way to tag function based on compute bounds, i.e., CPU, IO, ...or make your own tag!
 This gives the developer a high level overview on how each of their function can be tied together wherein linter would warn them about mixing tags that might cause some performance issues down the line.
