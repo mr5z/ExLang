@@ -1,66 +1,185 @@
+# ExLang
 
-# Questions
-- What is the difference between an immutable and a constant object?
-- Are primitive types object?
-- Should we have distinction between primitive types vs object types?
-- Should we make everything an object? (Java: will you ever learn?)
+ExLang is a programming language designed around a single core belief:
 
-# Proposals
-- Use keyword `def` for all declarations (class/interface/variable)
-  - Simplifies syntax and learning curve
-  - Compiler infers the declaration type from context
+> **If a pattern is proven and universal, it shouldn't be a pattern. It should be the language.**
 
-- No operator overloading, but allow function aliasing
-  - Functions can have symbolic aliases (e.g., @Alias("+"))
-  - When a function has an alias and is parameterless, the alias cannot appear on its right side
-  - Maintains readability while providing flexibility
+Design patterns exist largely because languages are missing features. ExLang is an attempt to be intentional and systematic about this from the start, baking industry-standard patterns in as first class language features, so developers spend cognitive energy on problems that matter, not on boilerplate that doesn't.
 
-- No struct/class distinction
-  - Behavior depends on implementation
-  - Simplifies type system
+The guiding principle for every design decision is: **reduce cognitive load without sacrificing explicitness.**
 
-- Parameters are immutable by default
-  - Functions marked with @Const guarantee no mutations in their execution path
-  - Provides clear guarantees about data modification
+---
 
-- Function overloading allows different return types
-  - Return type is part of the function signature
-  - Type inference determines correct version based on context
+# Philosophy
 
-- Discriminated unions use comma syntax
-  - `def x: TypeA, TypeB, TypeC`
-  - Simpler than complex sum types
+- **Proven patterns are language features.** Dependency injection, value semantics, data transfer: these are not conventions or frameworks in ExLang, they are built into the language itself.
+- **Intent over mechanism.** Developers declare *what* they want. The compiler figures out *how*.
+- **Smart defaults, explicit escape hatches.** The language should handle 99% of cases automatically. The 1% who need explicit control have the tools to do so.
+- **Compiler as safety net.** Bugs that are caught at compile time cannot exist at runtime. ExLang moves as many error classes as possible into the compiler.
 
-- Enum-style access uses dot notation
-  - `.North, .South, .East, .West`
-  - Consistent with other member access
+---
 
-- Attribute system provides compiler metadata access
-  - Attributes can influence compilation
-  - Provides extensibility without syntax complexity
+# Core Concepts
 
-- Module system
-  - Explicit imports/exports
-  - Clear dependency management
+ExLang has four fundamental declaration keywords, each with a distinct and enforced purpose:
 
-- Pattern matching for discriminated unions
-  - Essential for working with union types
-  - Ensures type-safe handling of variants
+| Keyword | Purpose | Mutable | Dependencies | Identity |
+|---|---|---|---|---|
+| `dto` | Pure data shape, no behavior | ❌ | ❌ | By value |
+| `value` | Self-contained behavioral type | ❌ | ❌ | By value |
+| `contract` | Abstract dependency boundary | N/A | N/A | N/A |
+| `def` | Instantiation, brings anything into existence | contextual | N/A | N/A |
 
+The key distinction:
+- `dto`, `value`, `contract` are **declarations**: they describe shape and behavior
+- `def` is **instantiation**: it brings something into existence
+
+`def` appears everywhere: declaring a field, a function, a variable, or a dependency. It always means the same thing: *I am bringing something into existence here.*
+
+---
+
+# Declaration Types
+
+## DTO
+
+A `dto` is pure data. No behavior, no dependencies, no identity. Two DTOs with the same values are the same thing. DTOs are immutable by default and are stack-allocated. The compiler handles memory automatically with no developer involvement.
+
+```
+dto Point {
+    def x: f32
+    def y: f32
+}
+
+dto UserResponse {
+    def id: u32
+    def name: String
+    def email: String
+}
+```
+
+DTOs are the standard way to pass data across boundaries: between services, across network calls, in and out of functions. They are automatically serializable.
+
+## Value Object
+
+A `value` has behavior but no dependencies. It is self-contained, immutable, and defined by its values rather than its identity. Two `Money` objects with the same amount and currency are interchangeable.
+
+```
+value Money {
+    def amount: f32
+    def currency: String
+
+    def add(other: Money): Money {
+        // ...
+    }
+
+    def isZero(): Bool {
+        // ...
+    }
+}
+```
+
+Values are appropriate for domain concepts that have logic but don't need external services: money, coordinates, dates, ranges, identifiers.
+
+## Contract
+
+A `contract` defines an abstract dependency boundary. It describes *what* something can do without specifying *how*. Contracts are the backbone of ExLang's dependency injection system. Services depend on contracts, never on concrete implementations.
+
+```
+contract Logger {
+    def log(message: String)
+}
+
+contract PaymentGateway {
+    def charge(amount: Money): Result
+}
+```
+
+Contracts can only be implemented by service types (declared with `def`). A `dto` or `value` implementing a contract would imply external dependencies, which violates their guarantees.
+
+## Service Types and Dependency Injection
+
+Service types are declared with `def` at the top level. They can have behavior, mutable state, and most importantly, **dependencies**.
+
+ExLang bakes dependency injection in as a first class language feature. The rule is simple:
+
+> **If a field's type is a `contract`, it is automatically a dependency. The compiler resolves and injects it.**
+
+No annotations, no frameworks, no constructor boilerplate. The type itself is the signal.
+
+```
+def UserService(
+    gateway: PaymentGateway,   // contract → injected automatically
+    logger: Logger             // contract → injected automatically
+) {
+    def process(payment: Money): Result {
+        // ...
+    }
+}
+```
+
+Constructors may **only** accept `contract` types. Primitives, DTOs, and value objects are not allowed in constructors. They are not dependencies, they are data. This is enforced by the compiler with no exceptions.
+
+This constraint cleanly separates two concerns:
+- **Constructors** are for wiring dependencies
+- **Initializers / factory functions** are for providing data
+
+### Module Bindings
+
+Somewhere the compiler needs to know which concrete type fulfills each contract. This is declared in a `module`:
+
+```
+def AppModule {
+    bind Logger -> ConsoleLogger @Singleton
+    bind PaymentGateway -> StripeGateway @Scoped
+    bind DatabaseSession -> PostgresSession @Scoped
+}
+```
+
+The compiler statically analyzes the entire dependency graph from the module declaration. The following are all **compile errors**, not runtime crashes:
+
+- Circular dependencies
+- A `@Transient` service injected into a `@Singleton`
+- A missing binding for a declared dependency
+- Unused bindings
+
+### Lifetime Scopes
+
+Lifetime is declared at the binding site, not on the type itself:
+
+- `@Singleton`: one instance for the lifetime of the application
+- `@Scoped`: one instance per logical scope (e.g., a request, a session)
+- `@Transient`: a fresh instance every time it is needed
+
+### Testing
+
+Test modules can shadow bindings from the application module:
+
+```
+def TestModule: AppModule {
+    bind Logger -> MockLogger
+    bind PaymentGateway -> StubGateway
+}
+```
+
+---
 
 # Variable Declaration
+
+`def` is used for all instantiation. The compiler infers type from context.
+
 ```
-// denotes x is an immutable variable with a type of a Numeric variant with an initial value of 0
+// immutable variable, type inferred as a Numeric variant, initial value 0
 def x = 0
 ```
 
+---
+
 # Function Aliases
+
 ```
 contract Numeric {
-    // ...
     @Alias("+")
     def plus(other: Self): Self = self + other
-    // ...
 }
 
 def u8: Numeric {
@@ -69,30 +188,35 @@ def u8: Numeric {
 
 def n: u8 = 0
 n = n.plus(1)
-n = n + 1 // possible due to function alias
+n = n + 1  // possible due to function alias
 ```
 
+---
+
 # Type Inference
+
 ```
-// doSomething() is able to return both i8 and Stream<i8> based on the inferred type
+// doSomething() returns either i8 or Stream<i8> based on inferred type
 def result: i8 = doSomething()
 def resultList: Stream<i8> = doSomething()
 ```
 
-# Self and access to implementing class type
+---
+
+# Self and Access to Implementing Type
+
 ```
 contract Role { self ->
 
-    // Self: type of implementing class
-    // self: name of variable instance, aka 'this',
-    //       and can be renamed to whatever you want as long as you define it above
+    // Self: type of the implementing class
+    // self: instance variable (like 'this'), renameable
     def assign(other: Self): Self {
         // ...
     }
 }
 
-def UserRole: Role { this -> // type of 'this' is Self but manually named to 'this'
-    
+def UserRole: Role { this ->
+
     // Self is now UserRole
     def assign(other: UserRole): UserRole {
         // ...
@@ -100,18 +224,20 @@ def UserRole: Role { this -> // type of 'this' is Self but manually named to 'th
 }
 ```
 
+---
+
 # Mutability
-Mutability are contextual:
+
+Mutability is contextual:
 
 1. Local variables are mutable by default
 2. Parameters are immutable by default
 3. Instance fields are mutable by default
+4. `dto` and `value` types are always immutable
 
 ```
-
-// #1
+// #1 local variables
 def doSomething() {
-
     def a: i32 = 0
     a = 1  // ok
 
@@ -120,17 +246,17 @@ def doSomething() {
     b = 1  // error
 }
 
-// #2
+// #2 parameters
 def doSomething(
     @Mutable
     a: i32,
     b: i32) {
 
-    a = 0 // ok!
-    b = 1 // error
+    a = 0  // ok
+    b = 1  // error
 }
 
-// #3
+// #3 instance fields
 def Rectangle: Shape {
     @Public
     def area: i32 -> width * length
@@ -141,36 +267,42 @@ def Rectangle: Shape {
 }
 
 def rect = Rectangle()
-rect.area = 0      // error
-rect.name = "Box!" // ok
+rect.area = 0       // error
+rect.name = "Box!"  // ok
 ```
 
+---
+
 # Const
-Marking a function const disallows any mutation in its entire execution path
+
+Marking a function `@Const` disallows any mutation in its entire execution path.
+
 ```
-// ...
 @Private
 def _position: u32
 
 @Const
 def doSomething() {
-    self._position += 1 // error (mutating instance field)
-    def i = 4           // (local variable)
-    i = 2               // ok!
+    self._position += 1  // error (mutating instance field)
+    def i = 4            // local variable
+    i = 2                // ok
 
-    advance()           // error (function must be marked const too)
+    advance()            // error (advance is not @Const)
 }
 
 def advance() {
     if _position <= _text.length {
-        _position ++
+        _position++
     }
 }
-
 ```
 
+---
+
 # Conditional Statement
-`if` statement is equivalent to `is`, `else` is `no`, and there is no `else if`
+
+`is` is equivalent to `if`, `no` is equivalent to `else`. There is no `else if`. Use `switch` for multi-branch logic.
+
 ```
 is x == y {
     doThis()
@@ -179,27 +311,19 @@ no {
     doThat()
 }
 
-
 switch enumValue {
-    case .North {
-        turn(90)
-    }
-    case .South {
-        turn(270)
-    }
-    case .East {
-        turn(0)
-    }
-    case .West {
-        turn(180)
-    }
+    case .North { turn(90) }
+    case .South { turn(270) }
+    case .East  { turn(0) }
+    case .West  { turn(180) }
 }
-
 ```
 
+---
+
 # Tagging
-Standard library includes a way to tag function based on compute bounds, i.e., CPU, IO, ...or make your own tag!
-This gives the developer a high level overview on how each of their function can be tied together wherein linter would warn them about mixing tags that might cause some performance issues down the line.
+
+The standard library provides a way to tag functions based on compute bounds: CPU, IO, or custom tags. This gives developers a high-level overview of how functions are tied together. The linter warns about mixing tags that may cause performance issues.
 
 ```
 @Tag(.IO)
@@ -212,177 +336,21 @@ def crunchSomeNumber(data: Vec<f32>): f32 {
     // math-heavy computation
 }
 
-// linter would warn about mixing bounds
+// linter warns about mixing bounds
 def doWork() {
     def user = requestUserInfo(userId)
     def x = crunchSomeNumber(data)
 }
 ```
-        
-# Standard library code example
 
-```
-attribute Public { context -> // context: Context
-    init() {
-        // communicate with compiler
-        def scope = context.getScope()
-        scope.allow([.External, .Internal])
-        scope.assemblyAccess([.All])
-    }
-}
-        
-attribute Private {
-    init() {
-        // communicate with compiler
-    }
-}
-        
-attribute Alias {
-    init(value: String) {
-        // communicate with compiler
-    }
-}
+---
 
-@Public
-def Stream<T>(array: [T]) {
+# Open Questions
 
-    @Private
-    def _array: [T] = array
-
-    @Private
-    def _currentIndex: u32
-
-    @Public
-    @Iterator
-    def Iterator(): T {
-        if (_currentIndex < _array.Length) {
-            yield _array[_currentIndex]
-            _currentIndex += 1
-        }
-    }
-}
-        
-@Public
-contract Numeric { self -> // self: Self
-    @Public
-    @Alias("+")
-    def plus(other: Self): Self = self + other
-
-    @Public
-    @Alias("+=")
-    def plusEquals(other: Self): Self = self += other
-            
-    @Public
-    @Alias("-")
-    def minus(other: Self): Self = self - other
-
-    @Public
-    @Alias("-=")
-    def minusEquals(other: Self): Self = self -= other
-
-    @Public
-    @Alias("/")
-    def divide(other: Self): Self = self / other
-            
-    @Public
-    @Alias("*")
-    def multiply(other: Self): Self = self * other
-
-    @Public
-    def typeSize: Self
-}
-
-@Public
-def Bit { this ->
-    @Public
-    @Alias("<<")
-    def leftShift(other: Bit, Stream<Bit>): Bit, Stream<Bit> {
-        for bit in other {
-            yield this << bit
-        }
-    }
-        
-    @Public
-    @Alias(">>")
-    def rightShift(other: Bit, Stream<Bit>): Bit, Stream<Bit> {
-        for bit in other {
-            yield this >> bit
-        }
-    }
-        
-    @Public
-    @Alias("|")
-    def or(other: Bit, Stream<Bit>): Bit, Stream<Bit> {
-        for bit in other {
-            yield this | bit
-        }
-    }
-        
-    @Public
-    @Alias("&")
-    def and(other: Bit, Stream<Bit>): Bit, Stream<Bit> {
-        for bit in other {
-            yield this & bit
-        }
-    }
-        
-    @Public
-    @Alias("^")
-    def xor(other: Bit, Stream<Bit>): Bit, Stream<Bit> {
-        for bit in other {
-            yield this ^ bit
-        }
-    }
-        
-    @Public
-    @Alias("~")
-    def not(): Bit, Stream<Bit> {
-        for bit in this {
-            yield ~bit
-        }
-    }
-}
-
-
-// signed
-@Public
-def i8: Numeric {
-    def typeSize: i8 = 8
-}
-
-@Public
-def i16: Numeric {
-    def typeSize: i8 = 16
-}
-
-@Public
-def i32: Numeric {
-    def typeSize: i8 = 32
-}
-        
-@Public
-def i64: Numeric {
-    def typeSize: i8 = 64
-}
-
-// unsigned
-@Public
-def u8: Numeric {
-    def typeSize: u8 = 8
-}
-        
-@Public
-def u16: Numeric {
-    def typeSize: u16 = 16
-}
-        
-@Public
-def u32: Numeric {
-    def typeSize: u32 = 32
-}
-        
-@Public
-def u64: Numeric {
-    def typeSize: u64 = 64
-}
-```
+- What is the full spec for discriminated unions, and does the `,` syntax conflict with multi-return?
+- How does `@Const` interact with injected dependencies?
+- Should `contract` support default implementations?
+- What is the concurrency model? Does the `@Tag` system extend to async boundaries?
+- What is the full null safety spec beyond `String?`?
+- How does error handling work? Exceptions, result types, or something new?
+- Should generics support variance annotations?
