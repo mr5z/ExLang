@@ -21,17 +21,18 @@ The guiding principle for every design decision is: **reduce cognitive load with
 
 # Core Concepts
 
-ExLang has four fundamental declaration keywords, each with a distinct and enforced purpose:
+ExLang has five fundamental keywords, each with a distinct and enforced purpose:
 
 | Keyword | Purpose | Mutable | Dependencies | Identity |
 |---|---|---|---|---|
 | `dto` | Pure data shape, no behavior | ❌ | ❌ | By value |
 | `value` | Self-contained behavioral type | ❌ | ❌ | By value |
 | `contract` | Abstract dependency boundary | N/A | N/A | N/A |
+| `service` | Stateful type with dependencies | ✅ | ✅ | By reference |
 | `def` | Instantiation, brings anything into existence | contextual | N/A | N/A |
 
 The key distinction:
-- `dto`, `value`, `contract` are **declarations**: they describe shape and behavior
+- `dto`, `value`, `contract`, `service` are **declarations**: they describe shape and behavior
 - `def` is **instantiation**: it brings something into existence
 
 `def` appears everywhere: declaring a field, a function, a variable, or a dependency. It always means the same thing: *I am bringing something into existence here.*
@@ -94,11 +95,11 @@ contract PaymentGateway {
 }
 ```
 
-Contracts can only be implemented by service types (declared with `def`). A `dto` or `value` implementing a contract would imply external dependencies, which violates their guarantees.
+Contracts can only be implemented by `service` types. A `dto` or `value` implementing a contract would imply external dependencies, which violates their guarantees.
 
-## Service Types and Dependency Injection
+## Service
 
-Service types are declared with `def` at the top level. They can have behavior, mutable state, and most importantly, **dependencies**.
+A `service` has behavior, mutable state, and dependencies. It is the only declaration type that participates in dependency injection. Services are identified by reference, not by value — two instances of the same service are distinct objects.
 
 ExLang bakes dependency injection in as a first class language feature. The rule is simple:
 
@@ -107,7 +108,7 @@ ExLang bakes dependency injection in as a first class language feature. The rule
 No annotations, no frameworks, no constructor boilerplate. The type itself is the signal.
 
 ```
-def UserService(
+service UserService(
     gateway: PaymentGateway,   // contract → injected automatically
     logger: Logger             // contract → injected automatically
 ) {
@@ -128,6 +129,10 @@ This constraint cleanly separates two concerns:
 Somewhere the compiler needs to know which concrete type fulfills each contract. This is declared in a `module`:
 
 ```
+service ConsoleLogger: Logger { ... }
+service StripeGateway: PaymentGateway { ... }
+service PostgresSession: DatabaseSession { ... }
+
 def AppModule {
     bind Logger -> ConsoleLogger @Singleton
     bind PaymentGateway -> StripeGateway @Scoped
@@ -155,6 +160,9 @@ Lifetime is declared at the binding site, not on the type itself:
 Test modules can shadow bindings from the application module:
 
 ```
+service MockLogger: Logger { ... }
+service StubGateway: PaymentGateway { ... }
+
 def TestModule: AppModule {
     bind Logger -> MockLogger
     bind PaymentGateway -> StubGateway
