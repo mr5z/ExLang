@@ -133,7 +133,7 @@ service ConsoleLogger: Logger { ... }
 service StripeGateway: PaymentGateway { ... }
 service PostgresSession: DatabaseSession { ... }
 
-def AppModule {
+service AppModule {
     bind Logger -> ConsoleLogger @Singleton
     bind PaymentGateway -> StripeGateway @Scoped
     bind DatabaseSession -> PostgresSession @Scoped
@@ -163,7 +163,7 @@ Test modules can shadow bindings from the application module:
 service MockLogger: Logger { ... }
 service StubGateway: PaymentGateway { ... }
 
-def TestModule: AppModule {
+service TestModule: AppModule {
     bind Logger -> MockLogger
     bind PaymentGateway -> StubGateway
 }
