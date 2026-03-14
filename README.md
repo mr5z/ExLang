@@ -62,7 +62,7 @@ DTOs are the standard way to pass data across boundaries: between services, acro
 
 ## Value Object
 
-A `object` has behavior but no dependencies. It is self-contained, immutable, and defined by its values rather than its identity. Two `Money` objects with the same amount and currency are interchangeable.
+An `object` has behavior but no dependencies. It is self-contained, immutable, and defined by its values rather than its identity. Two `Money` objects with the same amount and currency are interchangeable.
 
 ```
 object Money {
