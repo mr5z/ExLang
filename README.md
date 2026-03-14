@@ -26,13 +26,13 @@ ExLang has five fundamental keywords, each with a distinct and enforced purpose:
 | Keyword | Purpose | Mutable | Dependencies | Identity |
 |---|---|---|---|---|
 | `dto` | Pure data shape, no behavior | ❌ | ❌ | By value |
-| `value` | Self-contained behavioral type | ❌ | ❌ | By value |
+| `object` | Self-contained behavioral type | ❌ | ❌ | By value |
 | `contract` | Abstract dependency boundary | N/A | N/A | N/A |
 | `service` | Stateful type with dependencies | ✅ | ✅ | By reference |
 | `def` | Instantiation, brings anything into existence | contextual | N/A | N/A |
 
 The key distinction:
-- `dto`, `value`, `contract`, `service` are **declarations**: they describe shape and behavior
+- `dto`, `object`, `contract`, `service` are **declarations**: they describe shape and behavior
 - `def` is **instantiation**: it brings something into existence
 
 `def` appears everywhere: declaring a field, a function, a variable, or a dependency. It always means the same thing: *I am bringing something into existence here.*
@@ -62,10 +62,10 @@ DTOs are the standard way to pass data across boundaries: between services, acro
 
 ## Value Object
 
-A `value` has behavior but no dependencies. It is self-contained, immutable, and defined by its values rather than its identity. Two `Money` objects with the same amount and currency are interchangeable.
+A `object` has behavior but no dependencies. It is self-contained, immutable, and defined by its values rather than its identity. Two `Money` objects with the same amount and currency are interchangeable.
 
 ```
-value Money {
+object Money {
     def amount: f32
     def currency: String
 
@@ -95,7 +95,7 @@ contract PaymentGateway {
 }
 ```
 
-Contracts can only be implemented by `service` types. A `dto` or `value` implementing a contract would imply external dependencies, which violates their guarantees.
+Contracts can only be implemented by `service` types. A `dto` or `object` implementing a contract would imply external dependencies, which violates their guarantees.
 
 ## Service
 
@@ -241,7 +241,7 @@ Mutability is contextual:
 1. Local variables are mutable by default
 2. Parameters are immutable by default
 3. Instance fields are mutable by default
-4. `dto` and `value` types are always immutable
+4. `dto` and `object` types are always immutable
 
 ```
 // #1 local variables
