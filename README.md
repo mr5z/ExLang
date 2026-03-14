@@ -79,7 +79,7 @@ object Money {
 }
 ```
 
-Values are appropriate for domain concepts that have logic but don't need external services: money, coordinates, dates, ranges, identifiers.
+Objects are appropriate for domain concepts that have logic but don't need external services: money, coordinates, dates, ranges, identifiers.
 
 ## Contract
 
