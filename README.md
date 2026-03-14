@@ -190,7 +190,7 @@ contract Numeric {
     def plus(other: Self): Self = self + other
 }
 
-def u8: Numeric {
+object u8: Numeric {
     // ...
 }
 
@@ -223,7 +223,7 @@ contract Role { self ->
     }
 }
 
-def UserRole: Role { this ->
+object UserRole: Role { this ->
 
     // Self is now UserRole
     def assign(other: UserRole): UserRole {
