@@ -21,7 +21,7 @@ The guiding principle for every design decision is: **reduce cognitive load with
 
 # Core Concepts
 
-ExLang has five fundamental keywords, each with a distinct and enforced purpose:
+ExLang has six fundamental keywords, each with a distinct and enforced purpose:
 
 | Keyword | Purpose | Mutable | Dependencies | Identity |
 |---|---|---|---|---|
@@ -29,10 +29,11 @@ ExLang has five fundamental keywords, each with a distinct and enforced purpose:
 | `object` | Self-contained behavioral type | ❌ | ❌ | By value |
 | `contract` | Abstract dependency boundary | N/A | N/A | N/A |
 | `service` | Stateful type with dependencies | ✅ | ✅ | By reference |
+| `module` | Declares and binds the dependency graph | N/A | N/A | N/A |
 | `def` | Instantiation, brings anything into existence | contextual | N/A | N/A |
 
 The key distinction:
-- `dto`, `object`, `contract`, `service` are **declarations**: they describe shape and behavior
+- `dto`, `object`, `contract`, `service`, `module` are **declarations**: they describe shape, behavior, and wiring
 - `def` is **instantiation**: it brings something into existence
 
 `def` appears everywhere: declaring a field, a function, a variable, or a dependency. It always means the same thing: *I am bringing something into existence here.*
