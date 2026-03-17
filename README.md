@@ -51,6 +51,7 @@ The key distinction:
 
 ## `object`
 - Fields are private by default, exposed only via explicit properties
+- Methods are private by default; use `@Exposed` to make a method public
 - Always immutable
 - Sealed by default. Use `@Extensible` to allow inheritance
 - Can implement contracts via `@Implements`, but cannot be a module binding target
@@ -61,6 +62,7 @@ The key distinction:
 
 ## `service`
 - Fields are private by default, exposed only via explicit properties
+- Methods are public by default; use `@Hidden` to make a method private
 - Mutable
 - Sealed by default. Use `@Extensible` to allow inheritance
 - DI-managed: participates in dependency injection via module bindings
@@ -93,7 +95,7 @@ DTOs are the standard way to pass data across boundaries: between services, acro
 
 An `object` has behavior but no dependencies. It is self-contained, immutable, and defined by its values rather than its identity. Two `Money` objects with the same amount and currency are interchangeable.
 
-Fields are private by default. Public state is exposed via explicit properties.
+Fields are private by default. Public state is exposed via explicit properties. Methods are private by default; use `@Exposed` to surface them as part of the public interface.
 
 ```
 object Money {
@@ -108,12 +110,18 @@ object Money {
         get => _currency;
     }
 
+    @Exposed
     add(other: Money): Money {
         // ...
     }
 
+    @Exposed
     isZero(): Bool {
         // ...
+    }
+
+    normalizeAmount(): f32 {
+        // private helper, not exposed
     }
 }
 ```
@@ -139,6 +147,7 @@ object DiscountedMoney {
         get => _discountRate;
     }
 
+    @Exposed
     discounted(): Money {
         // ...
     }
@@ -151,6 +160,7 @@ An `object` can implement contracts using `@Implements`. It can be used structur
 @Implements(Printable)
 object Money {
     // ...
+    @Exposed
     print() {
         // ...
     }
@@ -177,7 +187,7 @@ Both `service` and `object` types can implement contracts using `@Implements`. O
 
 A `service` has behavior, mutable state, and dependencies. It is the only declaration type that participates in dependency injection. Services are identified by reference, not by value. Two instances of the same service are distinct objects.
 
-Fields are private by default. Public state is exposed via explicit properties.
+Fields are private by default. Public state is exposed via explicit properties. Methods are public by default; use `@Hidden` to keep a method internal.
 
 ```
 service Counter {
@@ -189,6 +199,11 @@ service Counter {
 
     increment() {
         _count++;
+    }
+
+    @Hidden
+    validate() {
+        // internal only
     }
 }
 ```
@@ -352,6 +367,37 @@ module TestModule {
 
     @Scoped(DatabaseSession)
     InMemorySession;
+}
+```
+
+---
+
+# Visibility
+
+Method visibility follows the nature of each type:
+
+- **`object` methods are private by default.** An `object` is self-contained; its methods are internal implementation details unless deliberately surfaced. Use `@Exposed` to make a method public.
+- **`service` methods are public by default.** A `service` is a dependency boundary; its methods are its contract with the rest of the system. Use `@Hidden` to keep a method internal.
+- **`dto` fields are always public read-only.** No visibility control needed or allowed.
+- **Fields on `object` and `service`** are always private, exposed only via explicit properties. This is enforced by the type system, not by annotation.
+
+Developers who prefer explicit annotations for consistency may annotate freely — `@Exposed` on an `object` method and `@Hidden` on a `service` method are never meaningless, as they signal a deliberate choice.
+
+```
+object Money {
+    _amount: f32;
+
+    @Exposed
+    add(other: Money): Money { ... }    // explicitly public
+
+    normalize(): f32 { ... }           // private by default
+}
+
+service UserService {
+    process(payment: Money): Result { ... }   // public by default
+
+    @Hidden
+    validate(payment: Money): Bool { ... }    // explicitly private
 }
 ```
 
