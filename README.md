@@ -73,13 +73,26 @@ object Money {
         // ...
     }
 
-    def isZero(): Bool {
+    isZero(): Bool {
         // ...
     }
 }
 ```
 
 Objects are appropriate for domain concepts that have logic but don't need external services: money, coordinates, dates, ranges, identifiers.
+
+An `object` can inherit from another `object` using `@Inherits`. Only single inheritance is allowed.
+
+```
+@Inherits(Money)
+object DiscountedMoney {
+    discountRate: f32;
+
+    discounted(): Money {
+        // ...
+    }
+}
+```
 
 ## Contract
 
@@ -95,7 +108,9 @@ contract PaymentGateway {
 }
 ```
 
-Contracts can only be implemented by `service` types. A `dto` or `object` implementing a contract would imply external dependencies, which violates their guarantees.
+Contracts declare signatures only. No definitions, no default implementations, no fields. The implementing type is entirely responsible for the behavior.
+
+Both `service` and `object` types can implement contracts using `@Implements`. However, only `service` types can be bound in a module and participate in dependency injection. An `object` implementing a contract can be used structurally wherever that contract is expected, but is never DI-managed.
 
 ## Service
 
@@ -106,6 +121,56 @@ ExLang bakes dependency injection in as a first class language feature. The rule
 > **If a field's type is a `contract`, it is automatically a dependency. The compiler resolves and injects it.**
 
 No annotations, no frameworks, no constructor boilerplate. The type itself is the signal.
+
+A `service` declares which contracts it fulfills using `@Implements`. Multiple contracts are supported either by separating them with commas or by repeating the annotation.
+
+```
+@Implements(Logger)
+service ConsoleLogger {
+    log(message: String) {
+        // ...
+    }
+}
+
+// multiple contracts, single annotation
+@Implements(Logger, Disposable)
+service FileLogger {
+    log(message: String) {
+        // ...
+    }
+
+    dispose() {
+        // ...
+    }
+}
+
+// multiple contracts, multiple annotations — equivalent to above
+@Implements(Logger)
+@Implements(Disposable)
+service NetworkLogger {
+    log(message: String) {
+        // ...
+    }
+
+    dispose() {
+        // ...
+    }
+}
+```
+
+A `service` can also inherit from another `service` using `@Inherits`. Only single inheritance is allowed.
+
+```
+@Inherits(BaseLogger)
+@Implements(Logger)
+service ConsoleLogger {
+    log(message: String) {
+        // ...
+    }
+}
+```
+
+Constructor dependencies are declared in the service signature. Only `contract` types are allowed as constructor parameters.
 
 ```
 service UserService(
@@ -118,7 +183,7 @@ service UserService(
 }
 ```
 
-Constructors may **only** accept `contract` types. Primitives, DTOs, and value objects are not allowed in constructors. They are not dependencies, they are data. This is enforced by the compiler with no exceptions.
+Constructors may **only** accept `contract` types. Primitives, DTOs, and objects are not allowed in constructors. They are not dependencies, they are data. This is enforced by the compiler with no exceptions.
 
 This constraint cleanly separates two concerns:
 - **Constructors** are for wiring dependencies
@@ -129,9 +194,14 @@ This constraint cleanly separates two concerns:
 Somewhere the compiler needs to know which concrete type fulfills each contract. This is declared in a `module`:
 
 ```
-service ConsoleLogger: Logger { ... }
-service StripeGateway: PaymentGateway { ... }
-service PostgresSession: DatabaseSession { ... }
+@Implements(Logger)
+service ConsoleLogger { ... }
+
+@Implements(PaymentGateway)
+service StripeGateway { ... }
+
+@Implements(DatabaseSession)
+service PostgresSession { ... }
 
 module AppModule {
     @Singleton
@@ -142,6 +212,15 @@ module AppModule {
 
     @Scoped
     DatabaseSession -> PostgresSession;
+}
+```
+
+An `object` type cannot appear as a module binding target, even if it implements a contract. The compiler enforces this:
+
+```
+module AppModule {
+    Logger -> ConsoleLogger;  // ok, service
+    Logger -> SomeObject;     // compile error, object cannot be bound
 }
 ```
 
@@ -165,9 +244,14 @@ Lifetime is declared at the binding site, not on the type itself:
 Test modules can shadow bindings from the application module:
 
 ```
-service MockLogger: Logger { ... }
-service StubGateway: PaymentGateway { ... }
-service InMemorySession: DatabaseSession { ... }
+@Implements(Logger)
+service MockLogger { ... }
+
+@Implements(PaymentGateway)
+service StubGateway { ... }
+
+@Implements(DatabaseSession)
+service InMemorySession { ... }
 
 @Mock(AppModule)
 module TestModule {
@@ -178,9 +262,20 @@ module TestModule {
     PaymentGateway -> StubGateway;
 
     @Scoped
-    DatabaseSessopm -> InMemorySession;
+    DatabaseSession -> InMemorySession;
 }
 ```
+
+---
+
+# Inheritance and Implementation Rules
+
+- `@Inherits` may appear **at most once** on any `service` or `object`. Multiple inheritance is not allowed.
+- `@Implements` may appear **multiple times**, or accept multiple contracts separated by commas. Both forms are equivalent.
+- `@Implements` is valid on both `service` and `object` types. `dto` cannot implement contracts.
+- Only `service` types can be bound in a module. An `object` implementing a contract cannot appear as a module binding target, even if it satisfies the contract signature.
+- A `service` that `@Inherits` another `service` automatically inherits its dependencies.
+- The compiler enforces that all contract methods are implemented. Missing implementations are compile errors.
 
 ---
 
@@ -231,12 +326,11 @@ contract Role { self ->
 
     // Self: type of the implementing class
     // self: instance variable (like 'this'), renameable
-    assign(other: Self): Self {
-        // ...
-    }
+    assign(other: Self): Self;
 }
 
-object UserRole: Role { this ->
+@Implements(Role)
+object UserRole { this ->
 
     // Self is now UserRole
     assign(other: UserRole): UserRole {
@@ -259,12 +353,12 @@ Mutability is contextual:
 ```
 // #1 local variables
 doSomething() {
-    def a: i32 = 0
-    a = 1  // ok
+    def a: i32 = 0;
+    a = 1;  // ok
 
     @Immutable
-    def b: i32 = 0
-    b = 1  // error
+    def b: i32 = 0;
+    b = 1;  // error
 }
 
 // #2 parameters
@@ -278,11 +372,11 @@ doSomething(
 }
 
 // #3 instance fields
-object Rectangle: Shape {
-    area: i32 -> width * length
+object Rectangle {
+    area: i32 -> width * length;
 
     @Immutable
-    name: String?
+    name: String?;
 }
 
 def rect = Rectangle();
@@ -323,10 +417,10 @@ advance() {
 
 ```
 is x == y {
-    doThis()
+    doThis();
 }
 no {
-    doThat()
+    doThat();
 }
 
 switch enumValue {
