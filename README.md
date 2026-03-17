@@ -40,11 +40,39 @@ The key distinction:
 
 ---
 
+# Defaults
+
+## `dto`
+- Fields are public read-only properties by default
+- Always immutable
+- Always sealed: cannot be inherited under any circumstance
+- Stack-allocated
+- Automatically serializable
+
+## `object`
+- Fields are private by default, exposed only via explicit properties
+- Always immutable
+- Sealed by default. Use `@Extensible` to allow inheritance
+- Can implement contracts via `@Implements`, but cannot be a module binding target
+
+## `contract`
+- Signatures only: no fields, no definitions, no default implementations
+- Cannot be instantiated directly
+
+## `service`
+- Fields are private by default, exposed only via explicit properties
+- Mutable
+- Sealed by default. Use `@Extensible` to allow inheritance
+- DI-managed: participates in dependency injection via module bindings
+- Identified by reference, not by value
+
+---
+
 # Declaration Types
 
 ## DTO
 
-A `dto` is pure data. No behavior, no dependencies, no identity. Two DTOs with the same values are the same thing. DTOs are immutable by default and are stack-allocated. The compiler handles memory automatically with no developer involvement.
+A `dto` is pure data. No behavior, no dependencies, no identity. Two DTOs with the same values are the same thing. All fields are implicitly public read-only properties. DTOs are always sealed and cannot be inherited.
 
 ```
 dto Point {
@@ -61,14 +89,24 @@ dto UserResponse {
 
 DTOs are the standard way to pass data across boundaries: between services, across network calls, in and out of functions. They are automatically serializable.
 
-## Value Object
+## Object
 
 An `object` has behavior but no dependencies. It is self-contained, immutable, and defined by its values rather than its identity. Two `Money` objects with the same amount and currency are interchangeable.
 
+Fields are private by default. Public state is exposed via explicit properties.
+
 ```
 object Money {
-    amount: f32;
-    currency: String;
+    _amount: f32;
+    _currency: String;
+
+    amount: f32 {
+        get => _amount;
+    }
+
+    currency: String {
+        get => _currency;
+    }
 
     add(other: Money): Money {
         // ...
@@ -80,14 +118,26 @@ object Money {
 }
 ```
 
-Objects are appropriate for domain concepts that have logic but don't need external services: money, coordinates, dates, ranges, identifiers.
-
-An `object` can inherit from another `object` using `@Inherits`. Only single inheritance is allowed.
+Objects are sealed by default. Use `@Extensible` to allow inheritance, and `@Inherits` to inherit from another object. Only single inheritance is allowed.
 
 ```
+@Extensible
+object Money {
+    _amount: f32;
+    _currency: String;
+
+    amount: f32 {
+        get => _amount;
+    }
+}
+
 @Inherits(Money)
 object DiscountedMoney {
-    discountRate: f32;
+    _discountRate: f32;
+
+    discountRate: f32 {
+        get => _discountRate;
+    }
 
     discounted(): Money {
         // ...
@@ -95,9 +145,21 @@ object DiscountedMoney {
 }
 ```
 
+An `object` can implement contracts using `@Implements`. It can be used structurally wherever that contract is expected, but it is never DI-managed and cannot appear as a module binding target.
+
+```
+@Implements(Printable)
+object Money {
+    // ...
+    print() {
+        // ...
+    }
+}
+```
+
 ## Contract
 
-A `contract` defines an abstract dependency boundary. It describes *what* something can do without specifying *how*. Contracts are the backbone of ExLang's dependency injection system. Services depend on contracts, never on concrete implementations.
+A `contract` defines an abstract dependency boundary. It describes *what* something can do without specifying *how*. Contracts contain signatures only: no fields, no definitions, no default implementations.
 
 ```
 contract Logger {
@@ -109,13 +171,40 @@ contract PaymentGateway {
 }
 ```
 
-Contracts declare signatures only. No definitions, no default implementations, no fields. The implementing type is entirely responsible for the behavior.
-
-Both `service` and `object` types can implement contracts using `@Implements`. However, only `service` types can be bound in a module and participate in dependency injection. An `object` implementing a contract can be used structurally wherever that contract is expected, but is never DI-managed.
+Both `service` and `object` types can implement contracts using `@Implements`. Only `service` types can be bound in a module and participate in dependency injection.
 
 ## Service
 
-A `service` has behavior, mutable state, and dependencies. It is the only declaration type that participates in dependency injection. Services are identified by reference, not by value — two instances of the same service are distinct objects.
+A `service` has behavior, mutable state, and dependencies. It is the only declaration type that participates in dependency injection. Services are identified by reference, not by value. Two instances of the same service are distinct objects.
+
+Fields are private by default. Public state is exposed via explicit properties.
+
+```
+service Counter {
+    _count: i32;
+
+    count: i32 {
+        get => _count;
+    }
+
+    increment() {
+        _count++;
+    }
+}
+```
+
+Mutable properties expose both a getter and a setter:
+
+```
+service Rectangle {
+    _width: f32;
+
+    width: f32 {
+        get => _width;
+        set => _width = value;
+    }
+}
+```
 
 ExLang bakes dependency injection in as a first class language feature. The rule is simple:
 
@@ -145,7 +234,7 @@ service FileLogger {
     }
 }
 
-// multiple contracts, multiple annotations — equivalent to above
+// multiple contracts, multiple annotations (equivalent to above)
 @Implements(Logger)
 @Implements(Disposable)
 service NetworkLogger {
@@ -159,9 +248,18 @@ service NetworkLogger {
 }
 ```
 
-A `service` can also inherit from another `service` using `@Inherits`. Only single inheritance is allowed.
+Services are sealed by default. Use `@Extensible` to allow inheritance, and `@Inherits` to inherit from another service. Only single inheritance is allowed. A service that `@Inherits` another service automatically inherits its dependencies.
 
 ```
+@Extensible
+service BaseLogger {
+    _prefix: String;
+
+    formatMessage(message: String): String {
+        // ...
+    }
+}
+
 @Inherits(BaseLogger)
 @Implements(Logger)
 service ConsoleLogger {
@@ -171,7 +269,7 @@ service ConsoleLogger {
 }
 ```
 
-Constructor dependencies are declared in the service signature. Only `contract` types are allowed as constructor parameters.
+Constructor dependencies are declared in the service signature. Only `contract` types are allowed as constructor parameters. This is enforced by the compiler with no exceptions.
 
 ```
 service UserService(
@@ -184,15 +282,13 @@ service UserService(
 }
 ```
 
-Constructors may **only** accept `contract` types. Primitives, DTOs, and objects are not allowed in constructors. They are not dependencies, they are data. This is enforced by the compiler with no exceptions.
-
 This constraint cleanly separates two concerns:
 - **Constructors** are for wiring dependencies
 - **Initializers / factory functions** are for providing data
 
-### Module Bindings
+## Module
 
-Somewhere the compiler needs to know which concrete type fulfills each contract. This is declared in a `module`:
+A `module` declares the dependency graph for the application. It tells the compiler which concrete `service` type fulfills each `contract`, and what lifetime scope each registration has.
 
 ```
 @Implements(Logger)
@@ -205,23 +301,14 @@ service StripeGateway { ... }
 service PostgresSession { ... }
 
 module AppModule {
-    @Singleton
-    Logger -> ConsoleLogger;
+    @Singleton(Logger)
+    ConsoleLogger;
 
-    @Scoped
-    PaymentGateway -> StripeGateway;
+    @Scoped(PaymentGateway)
+    StripeGateway;
 
-    @Scoped
-    DatabaseSession -> PostgresSession;
-}
-```
-
-An `object` type cannot appear as a module binding target, even if it implements a contract. The compiler enforces this:
-
-```
-module AppModule {
-    Logger -> ConsoleLogger;  // ok, service
-    Logger -> SomeObject;     // compile error, object cannot be bound
+    @Scoped(DatabaseSession)
+    PostgresSession;
 }
 ```
 
@@ -231,18 +318,19 @@ The compiler statically analyzes the entire dependency graph from the module dec
 - A `@Transient` service injected into a `@Singleton`
 - A missing binding for a declared dependency
 - Unused bindings
+- An `object` type used as a binding target
 
 ### Lifetime Scopes
 
-Lifetime is declared at the binding site, not on the type itself:
+Lifetime is declared at the binding site via the scope annotation:
 
-- `@Singleton`: one instance for the lifetime of the application
-- `@Scoped`: one instance per logical scope (e.g., a request, a session)
-- `@Transient`: a fresh instance every time it is needed
+- `@Singleton(Contract)`: one instance for the lifetime of the application
+- `@Scoped(Contract)`: one instance per logical scope (e.g., a request, a session)
+- `@Transient(Contract)`: a fresh instance every time it is needed
 
 ### Testing
 
-Test modules can shadow bindings from the application module:
+Test modules can shadow bindings from the application module using `@Mock`:
 
 ```
 @Implements(Logger)
@@ -256,14 +344,14 @@ service InMemorySession { ... }
 
 @Mock(AppModule)
 module TestModule {
-    @Singleton
-    Logger -> MockLogger;
+    @Singleton(Logger)
+    MockLogger;
 
-    @Scoped
-    PaymentGateway -> StubGateway;
+    @Scoped(PaymentGateway)
+    StubGateway;
 
-    @Scoped
-    DatabaseSession -> InMemorySession;
+    @Scoped(DatabaseSession)
+    InMemorySession;
 }
 ```
 
@@ -271,12 +359,14 @@ module TestModule {
 
 # Inheritance and Implementation Rules
 
+- `@Extensible` may appear on `object` and `service` types to allow inheritance. Types are sealed by default.
 - `@Inherits` may appear **at most once** on any `service` or `object`. Multiple inheritance is not allowed.
+- `@Inherits` requires the parent type to be marked `@Extensible`. Inheriting a sealed type is a compile error.
 - `@Implements` may appear **multiple times**, or accept multiple contracts separated by commas. Both forms are equivalent.
 - `@Implements` is valid on both `service` and `object` types. `dto` cannot implement contracts.
-- Only `service` types can be bound in a module. An `object` implementing a contract cannot appear as a module binding target, even if it satisfies the contract signature.
+- Only `service` types can be bound in a module. An `object` implementing a contract cannot appear as a module binding target.
 - A `service` that `@Inherits` another `service` automatically inherits its dependencies.
-- The compiler enforces that all contract methods are implemented. Missing implementations are compile errors.
+- The compiler enforces that all contract method signatures are implemented. Missing implementations are compile errors.
 
 ---
 
@@ -296,11 +386,12 @@ def x = 0;
 ```
 contract Numeric {
     @Alias("+")
-    plus(other: Self): Self = self + other;
+    plus(other: Self): Self;
 }
 
-object u8: Numeric {
-    // ...
+@Implements(Numeric)
+object u8 {
+    plus(other: u8): u8 => self._value + other._value;
 }
 
 def n: u8 = 0;
@@ -348,8 +439,8 @@ Mutability is contextual:
 
 1. Local variables are mutable by default
 2. Parameters are immutable by default
-3. Instance fields are mutable by default
-4. `dto` and `object` types are always immutable
+3. Instance fields are private and mutable in `service`, private and immutable in `object`
+4. `dto` fields are always public and read-only
 
 ```
 // #1 local variables
@@ -372,17 +463,30 @@ doSomething(
     b = 1;  // error
 }
 
-// #3 instance fields
-object Rectangle {
-    area: i32 -> width * length;
+// #3 service fields: private, mutable, exposed via property
+service Rectangle {
+    _width: f32;
+    _height: f32;
 
-    @Immutable
-    name: String?;
+    width: f32 {
+        get => _width;
+        set => _width = value;
+    }
+
+    height: f32 {
+        get => _height;
+        set => _height = value;
+    }
 }
 
-def rect = Rectangle();
-rect.area = 0;       // error
-rect.name = "Box!";  // ok
+// #4 dto fields: always public read-only
+dto Point {
+    x: f32;
+    y: f32;
+}
+
+def p = Point();
+p.x = 1.0;  // error, dto fields are read-only
 ```
 
 ---
