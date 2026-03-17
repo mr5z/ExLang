@@ -47,14 +47,14 @@ A `dto` is pure data. No behavior, no dependencies, no identity. Two DTOs with t
 
 ```
 dto Point {
-    def x: f32
-    def y: f32
+    x: f32;
+    y: f32;
 }
 
 dto UserResponse {
-    def id: u32
-    def name: String
-    def email: String
+    id: u32;
+    name: String;
+    email: String;
 }
 ```
 
@@ -66,10 +66,10 @@ An `object` has behavior but no dependencies. It is self-contained, immutable, a
 
 ```
 object Money {
-    def amount: f32
-    def currency: String
+    amount: f32;
+    currency: String;
 
-    def add(other: Money): Money {
+    add(other: Money): Money {
         // ...
     }
 
@@ -87,11 +87,11 @@ A `contract` defines an abstract dependency boundary. It describes *what* someth
 
 ```
 contract Logger {
-    def log(message: String)
+    log(message: String);
 }
 
 contract PaymentGateway {
-    def charge(amount: Money): Result
+    charge(amount: Money): Result;
 }
 ```
 
@@ -112,7 +112,7 @@ service UserService(
     gateway: PaymentGateway,   // contract → injected automatically
     logger: Logger             // contract → injected automatically
 ) {
-    def process(payment: Money): Result {
+    process(payment: Money): Result {
         // ...
     }
 }
@@ -133,10 +133,15 @@ service ConsoleLogger: Logger { ... }
 service StripeGateway: PaymentGateway { ... }
 service PostgresSession: DatabaseSession { ... }
 
-service AppModule {
-    bind Logger -> ConsoleLogger @Singleton
-    bind PaymentGateway -> StripeGateway @Scoped
-    bind DatabaseSession -> PostgresSession @Scoped
+module AppModule {
+    @Singleton
+    Logger -> ConsoleLogger;
+
+    @Scoped
+    PaymentGateway -> StripeGateway;
+
+    @Scoped
+    DatabaseSession -> PostgresSession;
 }
 ```
 
@@ -162,10 +167,18 @@ Test modules can shadow bindings from the application module:
 ```
 service MockLogger: Logger { ... }
 service StubGateway: PaymentGateway { ... }
+service InMemorySession: DatabaseSession { ... }
 
-service TestModule: AppModule {
-    bind Logger -> MockLogger
-    bind PaymentGateway -> StubGateway
+@Mock(AppModule)
+module TestModule {
+    @Singleton
+    Logger -> MockLogger;
+
+    @Scoped
+    PaymentGateway -> StubGateway;
+
+    @Scoped
+    DatabaseSessopm -> InMemorySession;
 }
 ```
 
@@ -177,7 +190,7 @@ service TestModule: AppModule {
 
 ```
 // immutable variable, type inferred as a Numeric variant, initial value 0
-def x = 0
+def x = 0;
 ```
 
 ---
@@ -187,16 +200,16 @@ def x = 0
 ```
 contract Numeric {
     @Alias("+")
-    def plus(other: Self): Self = self + other
+    plus(other: Self): Self = self + other;
 }
 
 object u8: Numeric {
     // ...
 }
 
-def n: u8 = 0
-n = n.plus(1)
-n = n + 1  // possible due to function alias
+def n: u8 = 0;
+n = n.plus(1);
+n = n + 1;  // possible due to function alias
 ```
 
 ---
@@ -205,8 +218,8 @@ n = n + 1  // possible due to function alias
 
 ```
 // doSomething() returns either i8 or Stream<i8> based on inferred type
-def result: i8 = doSomething()
-def resultList: Stream<i8> = doSomething()
+def result: i8 = doSomething();
+def resultList: Stream<i8> = doSomething();
 ```
 
 ---
@@ -218,7 +231,7 @@ contract Role { self ->
 
     // Self: type of the implementing class
     // self: instance variable (like 'this'), renameable
-    def assign(other: Self): Self {
+    assign(other: Self): Self {
         // ...
     }
 }
@@ -226,7 +239,7 @@ contract Role { self ->
 object UserRole: Role { this ->
 
     // Self is now UserRole
-    def assign(other: UserRole): UserRole {
+    assign(other: UserRole): UserRole {
         // ...
     }
 }
@@ -245,7 +258,7 @@ Mutability is contextual:
 
 ```
 // #1 local variables
-def doSomething() {
+doSomething() {
     def a: i32 = 0
     a = 1  // ok
 
@@ -255,28 +268,26 @@ def doSomething() {
 }
 
 // #2 parameters
-def doSomething(
+doSomething(
     @Mutable
     a: i32,
     b: i32) {
 
-    a = 0  // ok
-    b = 1  // error
+    a = 0;  // ok
+    b = 1;  // error
 }
 
 // #3 instance fields
-def Rectangle: Shape {
-    @Public
-    def area: i32 -> width * length
+object Rectangle: Shape {
+    area: i32 -> width * length
 
-    @Public
     @Immutable
-    def name: String?
+    name: String?
 }
 
-def rect = Rectangle()
-rect.area = 0       // error
-rect.name = "Box!"  // ok
+def rect = Rectangle();
+rect.area = 0;       // error
+rect.name = "Box!";  // ok
 ```
 
 ---
@@ -286,21 +297,20 @@ rect.name = "Box!"  // ok
 Marking a function `@Const` disallows any mutation in its entire execution path.
 
 ```
-@Private
-def _position: u32
+_position: u32;
 
 @Const
-def doSomething() {
-    self._position += 1  // error (mutating instance field)
-    def i = 4            // local variable
-    i = 2                // ok
+doSomething() {
+    self._position += 1;  // error (mutating instance field)
+    def i = 4;            // local variable
+    i = 2;                // ok
 
-    advance()            // error (advance is not @Const)
+    advance();            // error (advance is not @Const)
 }
 
-def advance() {
-    if _position <= _text.length {
-        _position++
+advance() {
+    is _position <= _text.length {
+        _position++;
     }
 }
 ```
@@ -320,10 +330,10 @@ no {
 }
 
 switch enumValue {
-    case .North { turn(90) }
-    case .South { turn(270) }
-    case .East  { turn(0) }
-    case .West  { turn(180) }
+    case .North { turn(90); }
+    case .South { turn(270); }
+    case .East  { turn(0); }
+    case .West  { turn(180); }
 }
 ```
 
@@ -335,19 +345,19 @@ The standard library provides a way to tag functions based on compute bounds: CP
 
 ```
 @Tag(.IO)
-def requestUserInfo(id: u32): User {
+requestUserInfo(id: u32): User {
     // network request
 }
 
 @Tag(.CPU)
-def crunchSomeNumber(data: Vec<f32>): f32 {
+crunchSomeNumber(data: Vec<f32>): f32 {
     // math-heavy computation
 }
 
 // linter warns about mixing bounds
-def doWork() {
-    def user = requestUserInfo(userId)
-    def x = crunchSomeNumber(data)
+doWork() {
+    def user = requestUserInfo(userId);
+    def x = crunchSomeNumber(data);
 }
 ```
 
