@@ -1,16 +1,38 @@
 # ExLang
 
-ExLang is a programming language designed around a single core belief:
-
 > **If a pattern is proven and universal, it shouldn't be a pattern. It should be the language.**
 
-Design patterns exist largely because languages are missing features. ExLang is an attempt to be intentional and systematic about this from the start, baking industry-standard patterns in as first class language features, so developers spend cognitive energy on problems that matter, not on boilerplate that doesn't.
+Design patterns exist largely because languages are missing features. ExLang is an attempt to be intentional and systematic about this from the start, baking industry-standard patterns in as first-class language features, so developers spend cognitive energy on problems that matter, not on boilerplate that doesn't.
 
 The guiding principle for every design decision is: **reduce cognitive load without sacrificing explicitness.**
 
 ---
 
-# Philosophy
+## Table of Contents
+
+1. [Philosophy](#philosophy)
+2. [The Type System](#the-type-system)
+3. [Declaration Reference](#declaration-reference)
+   - [dto](#dto)
+   - [object](#object)
+   - [contract](#contract)
+   - [service](#service)
+   - [module](#module)
+4. [Cross-Cutting Rules](#cross-cutting-rules)
+   - [Visibility](#visibility)
+   - [Mutability](#mutability)
+   - [Inheritance and Implementation](#inheritance-and-implementation)
+5. [Instantiation](#instantiation)
+   - [def](#def)
+   - [Type Inference](#type-inference)
+   - [Function Aliases](#function-aliases)
+6. [Control Flow](#control-flow)
+7. [Annotations Reference](#annotations-reference)
+8. [Open Questions](#open-questions)
+
+---
+
+## Philosophy
 
 - **Proven patterns are language features.** Dependency injection, value semantics, data transfer: these are not conventions or frameworks in ExLang, they are built into the language itself.
 - **Intent over mechanism.** Developers declare *what* they want. The compiler figures out *how*.
@@ -19,60 +41,31 @@ The guiding principle for every design decision is: **reduce cognitive load with
 
 ---
 
-# Core Concepts
+## The Type System
 
 ExLang has six fundamental keywords, each with a distinct and enforced purpose:
 
-| Keyword | Purpose | Mutable | Dependencies | Identity |
+| Keyword | Purpose | Mutable Fields | Dependency Injection | Compared By |
 |---|---|---|---|---|
-| `dto` | Pure data shape, no behavior | ❌ | ❌ | By value |
-| `object` | Self-contained behavioral type | ❌ | ❌ | By value |
+| `dto` | Pure data shape, no behavior | ❌ | ❌ | Value |
+| `object` | Self-contained behavioral type | ❌ | ❌ | Value |
 | `contract` | Abstract dependency boundary | N/A | N/A | N/A |
-| `service` | Stateful type with dependencies | ✅ | ✅ | By reference |
+| `service` | Stateful type with dependencies | ✅ | ✅ | Reference |
 | `module` | Declares and binds the dependency graph | N/A | N/A | N/A |
-| `def` | Instantiation, brings anything into existence | contextual | N/A | N/A |
+| `def` | Instantiation, brings anything into existence | Contextual | N/A | N/A |
 
 The key distinction:
-- `dto`, `object`, `contract`, `service`, `module` are **declarations**: they describe shape, behavior, and wiring
-- `def` is **instantiation**: it brings something into existence
+
+- `dto`, `object`, `contract`, `service`, `module` are **declarations** — they describe shape, behavior, and wiring.
+- `def` is **instantiation** — it brings something into existence.
 
 `def` appears everywhere: declaring a field, a function, a variable, or a dependency. It always means the same thing: *I am bringing something into existence here.*
 
 ---
 
-# Defaults
+## Declaration Reference
 
-## `dto`
-- Fields are public read-only properties by default
-- Always immutable
-- Always sealed: cannot be inherited under any circumstance
-- Stack-allocated
-- Automatically serializable
-
-## `object`
-- Fields are private by default, exposed only via explicit properties
-- Methods are private by default; use `@Exposed` to make a method public
-- Always immutable
-- Sealed by default. Use `@Extensible` to allow inheritance
-- Can implement contracts via `@Implements`, but cannot be a module binding target
-
-## `contract`
-- Signatures only: no fields, no definitions, no default implementations
-- Cannot be instantiated directly
-
-## `service`
-- Fields are private by default, exposed only via explicit properties
-- Methods are public by default; use `@Hidden` to make a method private
-- Mutable
-- Sealed by default. Use `@Extensible` to allow inheritance
-- DI-managed: participates in dependency injection via module bindings
-- Identified by reference, not by value
-
----
-
-# Declaration Types
-
-## DTO
+### `dto`
 
 A `dto` is pure data. No behavior, no dependencies, no identity. Two DTOs with the same values are the same thing. All fields are implicitly public read-only properties. DTOs are always sealed and cannot be inherited.
 
@@ -91,7 +84,9 @@ dto UserResponse {
 
 DTOs are the standard way to pass data across boundaries: between services, across network calls, in and out of functions. They are automatically serializable.
 
-## Object
+---
+
+### `object`
 
 An `object` has behavior but no dependencies. It is self-contained, immutable, and defined by its values rather than its identity. Two `Money` objects with the same amount and currency are interchangeable.
 
@@ -167,7 +162,9 @@ object Money {
 }
 ```
 
-## Contract
+---
+
+### `contract`
 
 A `contract` defines an abstract dependency boundary. It describes *what* something can do without specifying *how*. Contracts contain signatures only: no fields, no definitions, no default implementations.
 
@@ -183,7 +180,9 @@ contract PaymentGateway {
 
 Both `service` and `object` types can implement contracts using `@Implements`. Only `service` types can be bound in a module and participate in dependency injection.
 
-## Service
+---
+
+### `service`
 
 A `service` has behavior, mutable state, and dependencies. It is the only declaration type that participates in dependency injection. Services are identified by reference, not by value. Two instances of the same service are distinct objects.
 
@@ -221,11 +220,32 @@ service Rectangle {
 }
 ```
 
-ExLang bakes dependency injection in as a first class language feature. The rule is simple:
+#### Dependency Injection
+
+ExLang bakes dependency injection in as a first-class language feature. The rule is simple:
 
 > **If a field's type is a `contract`, it is automatically a dependency. The compiler resolves and injects it.**
 
 No annotations, no frameworks, no constructor boilerplate. The type itself is the signal.
+
+Constructor dependencies are declared in the service signature. Only `contract` types are allowed as constructor parameters — this is enforced by the compiler with no exceptions.
+
+```
+service UserService(
+    gateway: PaymentGateway,   // contract → injected automatically
+    logger: Logger             // contract → injected automatically
+) {
+    process(payment: Money): Result {
+        // ...
+    }
+}
+```
+
+This constraint cleanly separates two concerns:
+- **Constructors** are for wiring dependencies.
+- **Initializers / factory functions** are for providing data.
+
+#### Implementing Contracts
 
 A `service` declares which contracts it fulfills using `@Implements`. Multiple contracts are supported either by separating them with commas or by repeating the annotation.
 
@@ -237,7 +257,7 @@ service ConsoleLogger {
     }
 }
 
-// multiple contracts, single annotation
+// Multiple contracts, single annotation
 @Implements(Logger, Disposable)
 service FileLogger {
     log(message: String) {
@@ -249,7 +269,7 @@ service FileLogger {
     }
 }
 
-// multiple contracts, multiple annotations (equivalent to above)
+// Multiple contracts, multiple annotations (equivalent to above)
 @Implements(Logger)
 @Implements(Disposable)
 service NetworkLogger {
@@ -262,6 +282,8 @@ service NetworkLogger {
     }
 }
 ```
+
+#### Inheritance
 
 Services are sealed by default. Use `@Extensible` to allow inheritance, and `@Inherits` to inherit from another service. Only single inheritance is allowed. A service that `@Inherits` another service automatically inherits its dependencies.
 
@@ -284,24 +306,9 @@ service ConsoleLogger {
 }
 ```
 
-Constructor dependencies are declared in the service signature. Only `contract` types are allowed as constructor parameters. This is enforced by the compiler with no exceptions.
+---
 
-```
-service UserService(
-    gateway: PaymentGateway,   // contract → injected automatically
-    logger: Logger             // contract → injected automatically
-) {
-    process(payment: Money): Result {
-        // ...
-    }
-}
-```
-
-This constraint cleanly separates two concerns:
-- **Constructors** are for wiring dependencies
-- **Initializers / factory functions** are for providing data
-
-## Module
+### `module`
 
 A `module` declares the dependency graph for the application. It tells the compiler which concrete `service` type fulfills each `contract`, and what lifetime scope each registration has.
 
@@ -335,15 +342,17 @@ The compiler statically analyzes the entire dependency graph from the module dec
 - Unused bindings
 - An `object` type used as a binding target
 
-### Lifetime Scopes
+#### Lifetime Scopes
 
 Lifetime is declared at the binding site via the scope annotation:
 
-- `@Singleton(Contract)`: one instance for the lifetime of the application
-- `@Scoped(Contract)`: one instance per logical scope (e.g., a request, a session)
-- `@Transient(Contract)`: a fresh instance every time it is needed
+| Annotation | Lifetime |
+|---|---|
+| `@Singleton(Contract)` | One instance for the lifetime of the application |
+| `@Scoped(Contract)` | One instance per logical scope (e.g., a request, a session) |
+| `@Transient(Contract)` | A fresh instance every time it is needed |
 
-### Testing
+#### Testing
 
 Test modules can shadow bindings from the application module using `@Mock`:
 
@@ -372,14 +381,19 @@ module TestModule {
 
 ---
 
-# Visibility
+## Cross-Cutting Rules
+
+### Visibility
 
 Method visibility follows the nature of each type:
 
-- **`object` methods are private by default.** An `object` is self-contained; its methods are internal implementation details unless deliberately surfaced. Use `@Exposed` to make a method public.
-- **`service` methods are public by default.** A `service` is a dependency boundary; its methods are its contract with the rest of the system. Use `@Hidden` to keep a method internal.
-- **`dto` fields are always public read-only.** No visibility control needed or allowed.
-- **Fields on `object` and `service`** are always private, exposed only via explicit properties. This is enforced by the type system, not by annotation.
+| Type | Fields | Methods | Override |
+|---|---|---|---|
+| `dto` | Always public read-only | N/A | Not allowed |
+| `object` | Always private | Private by default | `@Exposed` to make public |
+| `service` | Always private | Public by default | `@Hidden` to make private |
+
+Fields on `object` and `service` are always private, exposed only via explicit properties. This is enforced by the type system, not by annotation.
 
 Developers who prefer explicit annotations for consistency may annotate freely — `@Exposed` on an `object` method and `@Hidden` on a `service` method are never meaningless, as they signal a deliberate choice.
 
@@ -403,93 +417,20 @@ service UserService {
 
 ---
 
-# Inheritance and Implementation Rules
-
-- `@Extensible` may appear on `object` and `service` types to allow inheritance. Types are sealed by default.
-- `@Inherits` may appear **at most once** on any `service` or `object`. Multiple inheritance is not allowed.
-- `@Inherits` requires the parent type to be marked `@Extensible`. Inheriting a sealed type is a compile error.
-- `@Implements` may appear **multiple times**, or accept multiple contracts separated by commas. Both forms are equivalent.
-- `@Implements` is valid on both `service` and `object` types. `dto` cannot implement contracts.
-- Only `service` types can be bound in a module. An `object` implementing a contract cannot appear as a module binding target.
-- A `service` that `@Inherits` another `service` automatically inherits its dependencies.
-- The compiler enforces that all contract method signatures are implemented. Missing implementations are compile errors.
-
----
-
-# Variable Declaration
-
-`def` is used for all instantiation. The compiler infers type from context.
-
-```
-// immutable variable, type inferred as a Numeric variant, initial value 0
-def x = 0;
-```
-
----
-
-# Function Aliases
-
-```
-contract Numeric {
-    @Alias("+")
-    plus(other: Self): Self;
-}
-
-@Implements(Numeric)
-object u8 {
-    plus(other: u8): u8 => self._value + other._value;
-}
-
-def n: u8 = 0;
-n = n.plus(1);
-n = n + 1;  // possible due to function alias
-```
-
----
-
-# Type Inference
-
-```
-// doSomething() returns either i8 or Stream<i8> based on inferred type
-def result: i8 = doSomething();
-def resultList: Stream<i8> = doSomething();
-```
-
----
-
-# Self and Access to Implementing Type
-
-```
-contract Role { self ->
-
-    // Self: type of the implementing class
-    // self: instance variable (like 'this'), renameable
-    assign(other: Self): Self;
-}
-
-@Implements(Role)
-object UserRole { this ->
-
-    // Self is now UserRole
-    assign(other: UserRole): UserRole {
-        // ...
-    }
-}
-```
-
----
-
-# Mutability
+### Mutability
 
 Mutability is contextual:
 
-1. Local variables are mutable by default
-2. Parameters are immutable by default
-3. Instance fields are private and mutable in `service`, private and immutable in `object`
-4. `dto` fields are always public and read-only
+| Context | Default | Override |
+|---|---|---|
+| Local variables | Mutable | `@Immutable` to make immutable |
+| Parameters | Immutable | `@Mutable` to make mutable |
+| `service` fields | Private, mutable | Exposed via explicit properties |
+| `object` fields | Private, immutable | Exposed via explicit properties |
+| `dto` fields | Public, read-only | Not overridable |
 
 ```
-// #1 local variables
+// Local variables
 doSomething() {
     def a: i32 = 0;
     a = 1;  // ok
@@ -499,7 +440,7 @@ doSomething() {
     b = 1;  // error
 }
 
-// #2 parameters
+// Parameters
 doSomething(
     @Mutable
     a: i32,
@@ -509,7 +450,7 @@ doSomething(
     b = 1;  // error
 }
 
-// #3 service fields: private, mutable, exposed via property
+// service fields: private, mutable, exposed via property
 service Rectangle {
     _width: f32;
     _height: f32;
@@ -525,7 +466,7 @@ service Rectangle {
     }
 }
 
-// #4 dto fields: always public read-only
+// dto fields: always public read-only
 dto Point {
     x: f32;
     y: f32;
@@ -535,9 +476,7 @@ def p = Point();
 p.x = 1.0;  // error, dto fields are read-only
 ```
 
----
-
-# Const
+#### `@Const`
 
 Marking a function `@Const` disallows any mutation in its entire execution path.
 
@@ -562,9 +501,89 @@ advance() {
 
 ---
 
-# Conditional Statement
+### Inheritance and Implementation
 
-`is` is equivalent to `if`, `no` is equivalent to `else`. There is no `else if`. Use `switch` for multi-branch logic.
+| Rule | Detail |
+|---|---|
+| `@Extensible` | May appear on `object` and `service`. Types are sealed by default. |
+| `@Inherits` | May appear **at most once** on any type. Multiple inheritance is not allowed. |
+| `@Inherits` requires `@Extensible` | Inheriting a sealed type is a compile error. |
+| `@Implements` | May appear multiple times, or accept multiple contracts separated by commas. Both forms are equivalent. |
+| `@Implements` on `dto` | Not valid. `dto` cannot implement contracts. |
+| `object` as binding target | Not valid. Only `service` types can be bound in a module. |
+| Inherited dependencies | A `service` that `@Inherits` another `service` automatically inherits its dependencies. |
+| Contract enforcement | The compiler enforces that all contract method signatures are implemented. Missing implementations are compile errors. |
+
+---
+
+## Instantiation
+
+### `def`
+
+`def` is used for all instantiation. The compiler infers type from context.
+
+```
+// Immutable variable, type inferred as a Numeric variant, initial value 0
+def x = 0;
+```
+
+---
+
+### Type Inference
+
+```
+// doSomething() returns either i8 or Stream<i8> based on inferred type
+def result: i8 = doSomething();
+def resultList: Stream<i8> = doSomething();
+```
+
+---
+
+### Function Aliases
+
+```
+contract Numeric {
+    @Alias("+")
+    plus(other: Self): Self;
+}
+
+@Implements(Numeric)
+object u8 {
+    plus(other: u8): u8 => self._value + other._value;
+}
+
+def n: u8 = 0;
+n = n.plus(1);
+n = n + 1;  // possible due to function alias
+```
+
+---
+
+### Self and Access to Implementing Type
+
+```
+contract Role { self ->
+
+    // Self: type of the implementing class
+    // self: instance variable (like 'this'), renameable
+    assign(other: Self): Self;
+}
+
+@Implements(Role)
+object UserRole { this ->
+
+    // Self is now UserRole
+    assign(other: UserRole): UserRole {
+        // ...
+    }
+}
+```
+
+---
+
+## Control Flow
+
+`is` is equivalent to `if`, `no` is equivalent to `else`. There is no `else if` — use `switch` for multi-branch logic.
 
 ```
 is x == y {
@@ -584,9 +603,9 @@ switch enumValue {
 
 ---
 
-# Tagging
+### Tagging
 
-The standard library provides a way to tag functions based on compute bounds: CPU, IO, or custom tags. This gives developers a high-level overview of how functions are tied together. The linter warns about mixing tags that may cause performance issues.
+The standard library provides a way to tag functions based on compute bounds: `CPU`, `IO`, or custom tags. This gives developers a high-level overview of how functions are tied together. The linter warns about mixing tags that may cause performance issues.
 
 ```
 @Tag(.IO)
@@ -608,7 +627,55 @@ doWork() {
 
 ---
 
-# Open Questions
+## Annotations Reference
+
+### Visibility and Exposure
+
+| Annotation | Valid On | Effect |
+|---|---|---|
+| `@Exposed` | `object` methods | Makes a method public (overrides private-by-default) |
+| `@Hidden` | `service` methods | Makes a method private (overrides public-by-default) |
+
+### Mutability
+
+| Annotation | Valid On | Effect |
+|---|---|---|
+| `@Immutable` | Local variables | Prevents reassignment after declaration |
+| `@Mutable` | Parameters | Allows mutation of the parameter within the function |
+| `@Const` | Functions | Disallows any mutation in the entire execution path of the function |
+
+### Contracts and Implementation
+
+| Annotation | Valid On | Effect |
+|---|---|---|
+| `@Implements(Contract, ...)` | `object`, `service` | Declares that this type fulfills one or more contracts |
+| `@Alias("op")` | `contract` method signatures | Allows the method to be called using an operator or shorthand symbol |
+
+### Inheritance
+
+| Annotation | Valid On | Effect |
+|---|---|---|
+| `@Extensible` | `object`, `service` | Allows this type to be inherited. Types are sealed by default. |
+| `@Inherits(Type)` | `object`, `service` | Inherits from the specified type. May appear at most once. Parent must be `@Extensible`. |
+
+### Dependency Injection and Lifetime
+
+| Annotation | Valid On | Effect |
+|---|---|---|
+| `@Singleton(Contract)` | Module binding | One instance for the lifetime of the application |
+| `@Scoped(Contract)` | Module binding | One instance per logical scope (e.g., a request or session) |
+| `@Transient(Contract)` | Module binding | A fresh instance every time it is needed |
+| `@Mock(Module)` | `module` | Shadows bindings from the target module for testing purposes |
+
+### Tagging
+
+| Annotation | Valid On | Effect |
+|---|---|---|
+| `@Tag(bound)` | Functions | Marks a function with a compute bound (`IO`, `CPU`, or custom). The linter warns on mixed-bound call sites. |
+
+---
+
+## Open Questions
 
 - What is the full spec for discriminated unions, and does the `,` syntax conflict with multi-return?
 - How does `@Const` interact with injected dependencies?
