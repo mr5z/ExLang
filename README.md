@@ -52,6 +52,7 @@ ExLang has six fundamental keywords, each with a distinct and enforced purpose:
 | `contract` | Abstract dependency boundary | N/A | N/A | N/A |
 | `service` | Stateful type with dependencies | ✅ | ✅ | Reference |
 | `module` | Declares and binds the dependency graph | N/A | N/A | N/A |
+| `annotation` | Declares a reusable metadata tag that can influence compiler behavior | N/A | N/A | N/A |
 | `def` | Instantiation, brings anything into existence | Contextual | N/A | N/A |
 
 The key distinction:
@@ -621,6 +622,10 @@ doWork() {
 
 ## Annotations Reference
 
+> The annotation system, including how annotations are declared, how targeting works, and how annotations interact with the compiler, is documented separately. See [Annotations/README.md](Annotations/README.md).
+
+The following is a summary of all built-in annotations shipped with the standard library.
+
 ### Visibility and Exposure
 
 | Annotation | Valid On | Effect |
@@ -669,10 +674,10 @@ doWork() {
 ## Open Questions
 
 - What is the full spec for discriminated unions, and does the `,` syntax conflict with multi-return?
-- How does `@Const` interact with injected dependencies?
 - Should `contract` support default implementations?
 - What is the concurrency model? Does the `@Tag` system extend to async boundaries?
 - What is the full null safety spec beyond `String?`?
 - How does error handling work? Exceptions, result types, or something new?
 - Should generics support variance annotations?
 - Should mutable local variables use `@Mutable` as an annotation or a dedicated keyword?
+- For annotation-specific open questions, see [Annotations/README.md](Annotations/README.md).
