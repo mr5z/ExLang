@@ -56,8 +56,8 @@ ExLang has six fundamental keywords, each with a distinct and enforced purpose:
 
 The key distinction:
 
-- `dto`, `object`, `contract`, `service`, `module` are **declarations** — they describe shape, behavior, and wiring.
-- `def` is **instantiation** — it brings something into existence.
+- `dto`, `object`, `contract`, `service`, `module` are **declarations**: they describe shape, behavior, and wiring.
+- `def` is **instantiation**: it brings something into existence.
 
 `def` appears everywhere: declaring a field, a function, a variable, or a dependency. Its meaning is consistent regardless of context.
 
@@ -67,7 +67,7 @@ The key distinction:
 
 ### `dto`
 
-A `dto` is pure data with no behavior, no dependencies, and no identity — two DTOs with the same field values are considered equal. All fields are implicitly public read-only properties. DTOs are always sealed and cannot be inherited.
+A `dto` is pure data with no behavior, no dependencies, and no identity. Two DTOs with the same field values are considered equal. All fields are implicitly public read-only properties. DTOs are always sealed and cannot be inherited.
 
 ```
 dto Point {
@@ -222,9 +222,9 @@ service Rectangle {
 
 #### Dependency Injection
 
-Dependency injection is a first-class language feature in ExLang. Any field whose type is a `contract` is automatically treated as a dependency — the compiler resolves and injects the appropriate binding without any additional annotations or configuration.
+Dependency injection is a first-class language feature in ExLang. Any field whose type is a `contract` is automatically treated as a dependency; the compiler resolves and injects the appropriate binding without any additional annotations or configuration.
 
-Constructor dependencies are declared in the service signature. Only `contract` types are allowed as constructor parameters — this is enforced by the compiler with no exceptions.
+Constructor dependencies are declared in the service signature. Only `contract` types are allowed as constructor parameters, and this is enforced by the compiler with no exceptions.
 
 ```
 service UserService(
@@ -391,7 +391,7 @@ Method visibility follows the nature of each type:
 
 Fields on `object` and `service` are always private, exposed only via explicit properties. This is enforced by the type system, not by annotation.
 
-Developers who prefer explicit annotations for consistency may annotate freely — `@Exposed` on an `object` method and `@Hidden` on a `service` method are never meaningless, as they signal a deliberate choice.
+Developers who prefer explicit annotations for consistency may annotate freely. Using `@Exposed` on an `object` method or `@Hidden` on a `service` method is never redundant, as it signals a deliberate choice.
 
 ```
 object Money {
@@ -579,7 +579,7 @@ object UserRole { this ->
 
 ## Control Flow
 
-`is` is equivalent to `if`, `no` is equivalent to `else`. There is no `else if` — use `switch` for multi-branch logic.
+`is` is equivalent to `if`, `no` is equivalent to `else`. There is no `else if`; use `switch` for multi-branch logic.
 
 ```
 is x == y {
