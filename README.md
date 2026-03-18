@@ -419,8 +419,8 @@ Mutability is contextual:
 
 | Context | Default | Override |
 |---|---|---|
-| Local variables | Mutable | `@Immutable` to make immutable |
-| Parameters | Immutable | `@Mutable` to make mutable |
+| Local variables | Immutable | `@Mutable` to make mutable |
+| Parameters | Immutable | Not overridable |
 | `service` fields | Private, mutable | Exposed via explicit properties |
 | `object` fields | Private, immutable | Exposed via explicit properties |
 | `dto` fields | Public, read-only | Not overridable |
@@ -429,20 +429,16 @@ Mutability is contextual:
 // Local variables
 doSomething() {
     def a: i32 = 0;
-    a = 1;  // ok
+    a = 1;  // error, immutable by default
 
-    @Immutable
+    @Mutable
     def b: i32 = 0;
-    b = 1;  // error
+    b = 1;  // ok
 }
 
-// Parameters
-doSomething(
-    @Mutable
-    a: i32,
-    b: i32) {
-
-    a = 0;  // ok
+// Parameters are always immutable
+doSomething(a: i32, b: i32) {
+    a = 0;  // error
     b = 1;  // error
 }
 
@@ -482,7 +478,7 @@ _position: u32;
 @Const
 doSomething() {
     self._position += 1;  // error (mutating instance field)
-    def i = 4;            // local variable
+    def i = 4;            // immutable local variable
     i = 2;                // ok
 
     advance();            // error (advance is not @Const)
@@ -519,7 +515,7 @@ advance() {
 `def` is used for all instantiation. The compiler infers type from context.
 
 ```
-// Immutable variable, type inferred as a Numeric variant, initial value 0
+// Local variable, type inferred as a Numeric variant, initial value 0, immutable by default
 def x = 0;
 ```
 
@@ -636,8 +632,7 @@ doWork() {
 
 | Annotation | Valid On | Effect |
 |---|---|---|
-| `@Immutable` | Local variables | Prevents reassignment after declaration |
-| `@Mutable` | Parameters | Allows mutation of the parameter within the function |
+| `@Mutable` | Local variables | Allows reassignment of a local variable (immutable by default) |
 | `@Const` | Functions | Disallows any mutation in the entire execution path of the function |
 
 ### Contracts and Implementation
@@ -680,3 +675,4 @@ doWork() {
 - What is the full null safety spec beyond `String?`?
 - How does error handling work? Exceptions, result types, or something new?
 - Should generics support variance annotations?
+- Should mutable local variables use `@Mutable` as an annotation or a dedicated keyword?
