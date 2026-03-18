@@ -35,9 +35,9 @@ The guiding principle for every design decision is: **reduce cognitive load with
 ## Philosophy
 
 - **Proven patterns are language features.** Dependency injection, value semantics, data transfer: these are not conventions or frameworks in ExLang, they are built into the language itself.
-- **Intent over mechanism.** Developers declare *what* they want. The compiler figures out *how*.
-- **Smart defaults, explicit escape hatches.** The language should handle 99% of cases automatically. The 1% who need explicit control have the tools to do so.
-- **Compiler as safety net.** Bugs that are caught at compile time cannot exist at runtime. ExLang moves as many error classes as possible into the compiler.
+- **Intent over mechanism.** Developers declare *what* they want; the compiler is responsible for determining *how* to fulfill that declaration.
+- **Smart defaults, explicit escape hatches.** Common cases should work without configuration. Where explicit control is needed, the language provides the tools to do so.
+- **Compiler as safety net.** ExLang aims to move as many classes of bugs as possible into compile-time errors rather than runtime failures.
 
 ---
 
@@ -59,7 +59,7 @@ The key distinction:
 - `dto`, `object`, `contract`, `service`, `module` are **declarations** — they describe shape, behavior, and wiring.
 - `def` is **instantiation** — it brings something into existence.
 
-`def` appears everywhere: declaring a field, a function, a variable, or a dependency. It always means the same thing: *I am bringing something into existence here.*
+`def` appears everywhere: declaring a field, a function, a variable, or a dependency. Its meaning is consistent regardless of context.
 
 ---
 
@@ -67,7 +67,7 @@ The key distinction:
 
 ### `dto`
 
-A `dto` is pure data. No behavior, no dependencies, no identity. Two DTOs with the same values are the same thing. All fields are implicitly public read-only properties. DTOs are always sealed and cannot be inherited.
+A `dto` is pure data with no behavior, no dependencies, and no identity — two DTOs with the same field values are considered equal. All fields are implicitly public read-only properties. DTOs are always sealed and cannot be inherited.
 
 ```
 dto Point {
@@ -166,7 +166,7 @@ object Money {
 
 ### `contract`
 
-A `contract` defines an abstract dependency boundary. It describes *what* something can do without specifying *how*. Contracts contain signatures only: no fields, no definitions, no default implementations.
+A `contract` defines an abstract dependency boundary, specifying what a type can do without prescribing how it is implemented. Contracts contain signatures only: no fields, no definitions, no default implementations.
 
 ```
 contract Logger {
@@ -222,11 +222,7 @@ service Rectangle {
 
 #### Dependency Injection
 
-ExLang bakes dependency injection in as a first-class language feature. The rule is simple:
-
-> **If a field's type is a `contract`, it is automatically a dependency. The compiler resolves and injects it.**
-
-No annotations, no frameworks, no constructor boilerplate. The type itself is the signal.
+Dependency injection is a first-class language feature in ExLang. Any field whose type is a `contract` is automatically treated as a dependency — the compiler resolves and injects the appropriate binding without any additional annotations or configuration.
 
 Constructor dependencies are declared in the service signature. Only `contract` types are allowed as constructor parameters — this is enforced by the compiler with no exceptions.
 
