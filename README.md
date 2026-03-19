@@ -54,11 +54,13 @@ ExLang has six fundamental keywords, each with a distinct and enforced purpose:
 | `module` | Declares and binds the dependency graph | N/A | N/A | N/A |
 | `annotation` | Declares a reusable metadata tag that can influence compiler behavior | N/A | N/A | N/A |
 | `def` | Instantiation, brings anything into existence | Contextual | N/A | N/A |
+| `conditions` | Named, exhaustive partition of arbitrary predicates | N/A | N/A | N/A |
 
 The key distinction:
 
 - `dto`, `object`, `contract`, `service`, `module` are **declarations**: they describe shape, behavior, and wiring.
 - `def` is **instantiation**: it brings something into existence.
+- `conditions` is **classification**: it partitions an existing value into named, mutually exclusive cases.
 
 `def` appears everywhere: declaring a field, a function, a variable, or a dependency. Its meaning is consistent regardless of context.
 
@@ -229,8 +231,8 @@ Constructor dependencies are declared in the service signature. Only `contract` 
 
 ```
 service UserService(
-    gateway: PaymentGateway,   // contract → injected automatically
-    logger: Logger             // contract → injected automatically
+    gateway: PaymentGateway,   // contract -> injected automatically
+    logger: Logger             // contract -> injected automatically
 ) {
     process(payment: Money): Result {
         // ...
@@ -486,7 +488,7 @@ doSomething() {
 }
 
 advance() {
-    is _position <= _text.length {
+    if _position <= _text.length {
         _position++;
     }
 }
@@ -576,21 +578,112 @@ object UserRole { this ->
 
 ## Control Flow
 
-`is` is equivalent to `if`, `no` is equivalent to `else`. There is no `else if`; use `switch` for multi-branch logic.
+### `if` and `no`
+
+`if` handles conditional branching. `no` is the fallback branch, equivalent to `else` in other languages. There is no `else if`; multi-branch logic belongs in `switch` or `conditions`, both of which are more explicit and compiler-enforced. This is a deliberate design decision: `else if` chains scale poorly, are easy to get wrong, and offer no exhaustiveness guarantees. `conditions` covers the same ground with more structure.
 
 ```
-is x == y {
+if x == y {
     doThis();
 }
 no {
     doThat();
 }
+```
 
-switch enumValue {
-    case .North { turn(90); }
-    case .South { turn(270); }
-    case .East  { turn(0); }
-    case .West  { turn(180); }
+### `switch`
+
+`switch` is used for multi-branch logic over an enum or a `conditions` block. Cases are exhaustive by default; the compiler rejects a `switch` with missing cases.
+
+`switch` can be used as a statement or as an expression. When used as an expression, every case must evaluate to a value of the same type.
+
+```
+// Statement form
+switch direction {
+    case .North => turn(90);
+    case .South => turn(270);
+    case .East  => turn(0);
+    case .West  => turn(180);
+}
+
+// Expression form - switch evaluates to a value
+def degrees = switch direction {
+    case .North => 90;
+    case .South => 270;
+    case .East  => 0;
+    case .West  => 180;
+}
+```
+
+Multi-line case bodies use curly braces:
+
+```
+switch direction {
+    case .North {
+        log("Heading north");
+        turn(90);
+    }
+    case .South {
+        log("Heading south");
+        turn(270);
+    }
+}
+```
+
+### `conditions`
+
+`conditions` promotes arbitrary runtime predicates into a named, exhaustive set of cases that can be switched over. Each case is a named predicate. Cases are evaluated top to bottom; the first matching case wins.
+
+`conditions` blocks are always exhaustive. The developer is responsible for declaring cases that cover all possible states, and the compiler rejects any `switch` over a `conditions` block with missing cases, the same rule that applies to enum-based `switch`.
+
+```
+conditions WaterPhase {
+    Ice:    temp < 0;
+    Liquid: temp < 100;
+    Steam:  temp >= 100;
+}
+
+switch WaterPhase {
+    case .Ice    => freeze();
+    case .Liquid => liquid();
+    case .Steam  => boil();
+}
+```
+
+`conditions` can also be used with the expression form of `switch`:
+
+```
+def label = switch WaterPhase {
+    case .Ice    => "ice";
+    case .Liquid => "liquid";
+    case .Steam  => "steam";
+}
+```
+
+The compiler warns if declared predicates overlap, as an unreachable case is almost certainly a bug:
+
+```
+conditions Access {
+    Banned:      isBanned;
+    BannedAdmin: isBanned && isAdmin;  // warning: unreachable, Banned covers this
+    Allowed:     !isBanned;
+}
+```
+
+The unique value of `conditions` over a plain `if`/`no` chain is that the predicate set is declared once and reused across multiple `switch` sites. If the classification logic changes, it changes in one place:
+
+```
+// Both switch sites stay consistent automatically
+switch WaterPhase {
+    case .Ice    => applyIceShader();
+    case .Liquid => applyWaterShader();
+    case .Steam  => applySteamShader();
+}
+
+switch WaterPhase {
+    case .Ice    => playIceSound();
+    case .Liquid => playWaterSound();
+    case .Steam  => playSteamSound();
 }
 ```
 
@@ -680,4 +773,5 @@ The following is a summary of all built-in annotations shipped with the standard
 - How does error handling work? Exceptions, result types, or something new?
 - Should generics support variance annotations?
 - Should mutable local variables use `@Mutable` as an annotation or a dedicated keyword?
+- Can a `conditions` block reference variables outside its declaration scope, or is it always bound to a single variable?
 - For annotation-specific open questions, see [Annotations/README.md](Annotations/README.md).
