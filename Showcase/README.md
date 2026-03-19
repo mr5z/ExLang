@@ -6,8 +6,6 @@ A fictional e-commerce payment system demonstrating all language features in a s
 
 ## DTOs
 
-Pure data, always immutable, always serializable.
-
 ```
 dto Address {
     street: String;
@@ -36,18 +34,9 @@ dto OrderResponse {
 }
 ```
 
-DTO fields are always public and read-only. Attempting to reassign them is a compile error.
-
-```
-def p = Address();
-p.street = "123 Main St";  // error: dto fields are read-only
-```
-
 ---
 
 ## Contracts
-
-Abstract dependency boundaries, signatures only. No fields, no definitions, no default implementations.
 
 ```
 contract Logger {
@@ -74,11 +63,7 @@ contract Notifier {
 
 ## Objects
 
-Self-contained behavior, value semantics, private methods by default.
-
 ### Money
-
-A classic value object. Methods are private unless explicitly marked `@Exposed`.
 
 ```
 object Money {
@@ -113,7 +98,6 @@ object Money {
         // ...
     }
 
-    // private: internal rounding, not part of public interface
     roundToTwoDecimals(value: f32): f32 {
         // ...
     }
@@ -121,8 +105,6 @@ object Money {
 ```
 
 ### Discount
-
-Marked `@Extensible` so specialized discounts can inherit from it.
 
 ```
 @Extensible
@@ -138,7 +120,6 @@ object Discount {
         // ...
     }
 
-    // private helper
     clampRate(rate: f32): f32 {
         // ...
     }
@@ -161,8 +142,6 @@ object SeasonalDiscount {
 
 ### Receipt
 
-An `object` implementing a contract. Can be used structurally wherever `Printable` is expected, but is never DI-managed.
-
 ```
 @Implements(Printable)
 object Receipt {
@@ -183,7 +162,6 @@ object Receipt {
         // ...
     }
 
-    // private: formatting internals
     formatLine(item: OrderItem): String {
         // ...
     }
@@ -197,8 +175,6 @@ object Receipt {
 ---
 
 ## Function Aliases
-
-Operators mapped to contract method signatures.
 
 ```
 contract Numeric {
@@ -220,21 +196,17 @@ object u32 {
 }
 ```
 
-Both call forms are valid once an alias is declared.
-
 ```
 def a: u32 = 10;
 def b: u32 = 3;
 
-def c = a.plus(b);   // explicit
-def d = a + b;       // alias
+def c = a.plus(b);
+def d = a + b;
 ```
 
 ---
 
 ## Services
-
-Stateful, DI-managed, public methods by default.
 
 ### ConsoleLogger
 
@@ -249,7 +221,6 @@ service ConsoleLogger {
         // ...
     }
 
-    // private: shared formatting logic
     @Hidden
     format(level: String, message: String): String {
         // ...
@@ -258,8 +229,6 @@ service ConsoleLogger {
 ```
 
 ### FileLogger
-
-Implements two contracts using a single annotation.
 
 ```
 @Implements(Logger, Disposable)
@@ -292,8 +261,6 @@ service FileLogger {
 
 ### NetworkLogger
 
-Implements two contracts using separate `@Implements` annotations. This is equivalent to the single-annotation form above.
-
 ```
 @Implements(Logger)
 @Implements(Disposable)
@@ -313,8 +280,6 @@ service NetworkLogger {
 ```
 
 ### StripeGateway
-
-`Logger` is a contract parameter -- automatically injected by the compiler. No boilerplate required.
 
 ```
 @Implements(PaymentGateway)
@@ -388,8 +353,6 @@ service EmailNotifier(
 
 ### BaseAuditService
 
-An extensible base service. Child services that `@Inherits` this automatically inherit its `logger` dependency.
-
 ```
 @Extensible
 service BaseAuditService(
@@ -403,8 +366,6 @@ service BaseAuditService(
 ```
 
 ### OrderService
-
-The core domain service. Demonstrates inheritance, multiple injected dependencies, mutable state, `def`, type inference, and `if`/`no` conditionals.
 
 ```
 @Inherits(BaseAuditService)
@@ -420,7 +381,6 @@ service OrderService(
     }
 
     placeOrder(request: OrderRequest): OrderResponse {
-        // type inferred as Money
         def total = calculateTotal(request.items);
         def discount = resolveDiscount(request.userId);
         def finalAmount = discount.apply(total);
@@ -475,22 +435,18 @@ service OrderService(
 
 ## Control Flow
 
-`if` is equivalent to a conditional branch, `no` is equivalent to `else`. There is no `else if`; use `switch` for multi-branch logic.
-
 ### if / no
 
 ```
 if order == null {
-    // handle missing order
+    // ...
 }
 no {
-    // proceed normally
+    // ...
 }
 ```
 
 ### switch
-
-`switch` is used for multi-branch logic. Each `case` matches on enum values.
 
 ```
 service ShippingService {
@@ -514,21 +470,15 @@ service ShippingService {
 
 ## Mutability
 
-Local variables are immutable by default. Use `@Mutable` to allow reassignment. Parameters are always immutable and cannot be overridden.
-
 ```
 service PricingService {
     applyPromotions(basePrice: Money, promoCount: i32): Money {
-        // immutable by default
         def originalPrice = basePrice;
 
         @Mutable
         def adjusted = basePrice;
 
-        adjusted = adjusted.subtract(computeDiscount(promoCount));  // ok
-
-        originalPrice = basePrice;  // error: immutable
-        promoCount = 0;             // error: parameters are always immutable
+        adjusted = adjusted.subtract(computeDiscount(promoCount));
 
         return adjusted;
     }
@@ -544,18 +494,11 @@ service PricingService {
 
 ## Type Inference
 
-`def` infers type from the right-hand side by default. An explicit type annotation changes what the compiler expects the function to return.
-
 ```
 service InferenceDemo {
     run() {
-        // inferred as the default numeric type
         def x = 0;
-
-        // explicit type annotation: compiler expects doSomething() to return i8
         def result: i8 = doSomething();
-
-        // explicit type annotation: compiler expects doSomething() to return Stream<i8>
         def resultList: Stream<i8> = doSomething();
     }
 
@@ -570,8 +513,6 @@ service InferenceDemo {
 
 ## @Const
 
-Marking a function `@Const` disallows any mutation across its entire execution path -- including mutations to instance fields and calls to non-`@Const` functions.
-
 ```
 service Lexer {
     _position: u32;
@@ -581,12 +522,9 @@ service Lexer {
         get => _position;
     }
 
-    // @Const: no mutation allowed anywhere in this call path
     @Const
     peek(): String {
-        def current = _text;       // ok: reading is allowed
-        _position += 1;            // error: mutating instance field
-        advance();                 // error: advance() is not @Const
+        def current = _text;
         return current;
     }
 
@@ -601,8 +539,6 @@ service Lexer {
 ---
 
 ## Tagging
-
-Signal compute bounds for linter awareness. The linter warns when `@Tag(.IO)` and `@Tag(.CPU)` functions are mixed at the same call site.
 
 ```
 service ReportService(
@@ -619,7 +555,6 @@ service ReportService(
         // ...
     }
 
-    // linter warns: mixing IO and CPU bounds in one call site
     generateReport(orderId: u32) {
         def order = fetchOrderData(orderId);
         def summary = computeSummary(List(order));
@@ -631,8 +566,6 @@ service ReportService(
 ---
 
 ## Modules
-
-Declare and bind the full dependency graph. The compiler statically validates the entire graph -- circular dependencies, lifetime mismatches, missing bindings, and unused bindings are all compile errors.
 
 ```
 module AppModule {
@@ -653,8 +586,6 @@ module AppModule {
 ---
 
 ## Test Module
-
-Shadows all production bindings with fakes using `@Mock`.
 
 ```
 @Implements(Logger)
