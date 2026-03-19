@@ -21,6 +21,9 @@ The guiding principle for every design decision is: **reduce cognitive load with
    - [conditions](#conditions)
 4. [Cross-Cutting Rules](#cross-cutting-rules)
    - [Visibility](#visibility)
+   - [Fields](#fields)
+   - [Properties](#properties)
+   - [Naming Conventions](#naming-conventions)
    - [Mutability](#mutability)
    - [Inheritance and Implementation](#inheritance-and-implementation)
 5. [Instantiation](#instantiation)
@@ -53,7 +56,7 @@ These keywords describe data shape and behavior. They produce types that can be 
 | Keyword | Purpose | Mutable Fields | Dependency Injection | Compared By |
 |---|---|---|---|---|
 | `dto` | Pure data shape, no behavior | ❌ | ❌ | Value |
-| `object` | Self-contained behavioral type | ❌ | ❌ | Value |
+| `object` | Self-contained behavioral type | ⚠️ | ❌ | Value |
 | `contract` | Abstract dependency boundary | ❌ | ❌ | N/A |
 | `service` | Stateful type with dependencies | ✅ | ✅ | Reference |
 
@@ -81,7 +84,9 @@ These keywords are syntax primitives that operate on types rather than defining 
 
 ### `dto`
 
-A `dto` is pure data with no behavior, no dependencies, and no identity. Two DTOs with the same field values are considered equal. All fields are implicitly public read-only properties. DTOs are always sealed and cannot be inherited.
+A `dto` is pure data with no behavior, no dependencies, and no identity. Two DTOs with the same property values are considered equal. DTOs are always sealed and cannot be inherited.
+
+A `dto` has no fields. All members are read-only properties declared with bare `name: Type` syntax. The compiler manages storage implicitly. `@Mutable` and setter accessors are not valid on a `dto` and are compile errors.
 
 ```
 dto Point {
@@ -102,22 +107,14 @@ DTOs are the standard way to pass data across boundaries: between services, acro
 
 ### `object`
 
-An `object` has behavior but no dependencies. It is self-contained, immutable, and defined by its values rather than its identity. Two `Money` objects with the same amount and currency are interchangeable.
+An `object` has behavior but no dependencies. It is defined by its values rather than its identity. Two `Money` objects with the same property values are considered equal. Assignment is copy-by-value. Mutating a copy never affects the original.
 
-Fields are private by default. Public state is exposed via explicit properties. Methods are private by default; use `@Exposed` to surface them as part of the public interface.
+Properties are read-only by default. Use `@Mutable` to opt into mutability per property. Methods are private by default; use `@Exposed` to surface them as part of the public interface.
 
 ```
 object Money {
-    _amount: f32;
-    _currency: String;
-
-    amount: f32 {
-        get => _amount;
-    }
-
-    currency: String {
-        get => _currency;
-    }
+    amount: f32;       // read-only
+    currency: String;  // read-only
 
     @Exposed
     add(other: Money): Money {
@@ -135,26 +132,46 @@ object Money {
 }
 ```
 
+Properties can opt into mutability with `@Mutable`. Custom getter and setter logic is supported via an explicit accessor block. See [Properties](#properties) for the full property model.
+
+```
+object Temperature {
+    @Mutable
+    celsius: f32;                    // bare, mutable
+
+    fahrenheit: f32 {                // read-only, custom getter
+        get => field * 9 / 5 + 32;
+    }
+
+    @Mutable
+    kelvin: f32 {                    // mutable, custom getter and setter
+        get => field + 273.15;
+        set => field = value - 273.15;
+    }
+}
+```
+
+Objects are copy-by-value. Bare assignment produces an independent copy:
+
+```
+def a = Temperature(celsius: 100.0);
+def b = a;
+b.celsius = 0.0;
+// a.celsius is still 100.0
+```
+
 Objects are sealed by default. Use `@Extensible` to allow inheritance, and `@Inherits` to inherit from another object. Only single inheritance is allowed.
 
 ```
 @Extensible
 object Money {
-    _amount: f32;
-    _currency: String;
-
-    amount: f32 {
-        get => _amount;
-    }
+    amount: f32;
+    currency: String;
 }
 
 @Inherits(Money)
 object DiscountedMoney {
-    _discountRate: f32;
-
-    discountRate: f32 {
-        get => _discountRate;
-    }
+    discountRate: f32;
 
     @Exposed
     discounted(): Money {
@@ -200,18 +217,15 @@ Both `service` and `object` types can implement contracts using `@Implements`. O
 
 A `service` has behavior, mutable state, and dependencies. It is the only declaration type that participates in dependency injection. Services are identified by reference, not by value. Two instances of the same service are distinct objects.
 
-Fields are private by default. Public state is exposed via explicit properties. Methods are public by default; use `@Hidden` to keep a method internal.
+Properties are read-only by default. Use `@Mutable` to opt into mutability per property. Methods are public by default; use `@Hidden` to keep a method internal.
 
 ```
 service Counter {
-    _count: i32;
-
-    count: i32 {
-        get => _count;
-    }
+    @Mutable
+    count: i32;
 
     increment() {
-        _count++;
+        count++;
     }
 
     @Hidden
@@ -221,15 +235,20 @@ service Counter {
 }
 ```
 
-Mutable properties expose both a getter and a setter:
+Mutable properties with custom accessor logic use bare `set;` for simple assignment or `set =>` for custom logic:
 
 ```
 service Rectangle {
-    _width: f32;
-
+    @Mutable
     width: f32 {
-        get => _width;
-        set => _width = value;
+        get => field;
+        set;
+    }
+
+    @Mutable
+    height: f32 {
+        get => field;
+        set => field = value > 0.0 ? value : 0.0;  // clamp to positive
     }
 }
 ```
@@ -427,6 +446,139 @@ service UserService {
 
 ---
 
+### Fields
+
+A field is private storage owned by a type, used when a property requires custom accessor logic that references state not captured by the automatic `field` backing. Fields are always prefixed with `_` and are never accessible directly from outside the type.
+
+Fields are valid on `object` and `service` only. `dto` has no fields.
+
+```
+object Money {
+    _exchangeRate: f32;
+    _adjustmentFactor: f32;
+
+    exchangeRate: f32 {
+        get => _exchangeRate * _adjustmentFactor;
+        set => _exchangeRate = value / _adjustmentFactor;
+    }
+}
+```
+
+When a property only needs simple storage, no explicit field is required. The compiler provides an automatic backing store accessible as `field` inside the accessor block. Explicit fields are only needed when state must be shared across multiple properties.
+
+---
+
+### Properties
+
+A property is the public surface of a type's state. Properties are read-only by default across all types. Use `@Mutable` to opt into mutability.
+
+There are two forms:
+
+**Bare property.** No accessor block. The compiler manages storage implicitly.
+
+```
+dto Point {
+    x: f32;        // read-only, always
+    y: f32;
+}
+
+object Money {
+    amount: f32;   // read-only by default
+
+    @Mutable
+    discount: f32; // opted into mutability
+}
+
+service Counter {
+    @Mutable
+    count: i32;    // opted into mutability
+}
+```
+
+**Explicit property.** Has an accessor block with `get =>` and optionally `set;` or `set =>`. The compiler provides an automatic backing store accessible as `field` inside the block. `value` refers to the incoming value in a setter.
+
+```
+// read-only with custom getter
+exchangeRate: f32 {
+    get => field * adjustmentFactor;
+}
+
+// mutable, simple setter - stores value directly into field
+@Mutable
+discount: f32 {
+    get => field * 100;
+    set;
+}
+
+// mutable, custom setter logic
+@Mutable
+tax: f32 {
+    get => field * taxRate;
+    set => field = value / taxRate;
+}
+```
+
+If a property needs to share state with another property, an explicit field can be declared at the type level and referenced inside the accessor block. See [Fields](#fields).
+
+The following rules apply across all types:
+
+| Rule | Detail |
+|---|---|
+| `dto` properties | Always read-only. `@Mutable` and `set` are compile errors. |
+| `object` properties | Read-only by default. `@Mutable` to opt in. Copy-by-value on assignment. |
+| `service` properties | Read-only by default. `@Mutable` to opt in. |
+| `@Mutable` with `set` body | Compiler warning: redundant. |
+| `field` | Automatic backing store inside accessor blocks. |
+| `value` | The incoming value in a `set =>` body. |
+
+---
+
+### Naming Conventions
+
+All fields must be prefixed with `_`. This is enforced by the compiler. The prefix makes the distinction between fields, properties, and local variables (including parameters) unambiguous at a glance. `dto` types have no fields and are therefore exempt.
+
+```
+object Money {
+    _amount: f32;       // field: prefixed
+
+    amount: f32 {       // property: no prefix
+        get => _amount;
+    }
+
+    add(other: Money): Money {
+        def result = _amount + other.amount;  // local variable: no prefix
+        // ...
+    }
+}
+
+service Counter {
+    _count: i32;        // field: prefixed
+
+    count: i32 {        // property: no prefix
+        get => _count;
+    }
+
+    incrementBy(step: i32) {  // parameter: no prefix
+        _count += step;
+    }
+}
+
+dto Address {
+    street: String;   // property: no prefix, no backing field
+    city: String;
+    country: String;
+}
+```
+
+| Construct | Prefix | Applies To |
+|---|---|---|
+| Field | Required `_` | `object`, `service` |
+| Property | None | `dto`, `object`, `service` |
+| Local variable | None | All |
+| Parameter | None | All |
+
+---
+
 ### Mutability
 
 Mutability is contextual:
@@ -435,9 +587,9 @@ Mutability is contextual:
 |---|---|---|
 | Local variables | Immutable | `@Mutable` to make mutable |
 | Parameters | Immutable | Not overridable |
-| `service` fields | Private, mutable | Exposed via explicit properties |
-| `object` fields | Private, immutable | Exposed via explicit properties |
-| `dto` fields | Public, read-only | Not overridable |
+| `object` properties | Read-only | `@Mutable` to opt in |
+| `service` properties | Read-only | `@Mutable` to opt in |
+| `dto` properties | Read-only | Not overridable |
 
 ```
 // Local variables
@@ -472,14 +624,14 @@ service Rectangle {
     }
 }
 
-// dto fields: always public read-only
+// dto properties: always public read-only
 dto Point {
-    x: f32;
-    y: f32;
+    x: f32 { get; }
+    y: f32 { get; }
 }
 
 def p = Point();
-p.x = 1.0;  // error, dto fields are read-only
+p.x = 1.0;  // error, dto properties are read-only
 ```
 
 #### `@Const`
@@ -741,7 +893,7 @@ The following is a summary of all built-in annotations shipped with the standard
 
 | Annotation | Valid On | Effect |
 |---|---|---|
-| `@Mutable` | Local variables | Allows reassignment of a local variable (immutable by default) |
+| `@Mutable` | Local variables, `object` and `service` properties | Allows reassignment of a local variable, or opts a property into mutability. Compiler warning if used alongside a `set` body. |
 | `@Const` | Functions | Disallows any mutation in the entire execution path of the function |
 
 ### Contracts and Implementation
