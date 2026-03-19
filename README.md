@@ -18,6 +18,7 @@ The guiding principle for every design decision is: **reduce cognitive load with
    - [contract](#contract)
    - [service](#service)
    - [module](#module)
+   - [conditions](#conditions)
 4. [Cross-Cutting Rules](#cross-cutting-rules)
    - [Visibility](#visibility)
    - [Mutability](#mutability)
@@ -43,26 +44,36 @@ The guiding principle for every design decision is: **reduce cognitive load with
 
 ## The Type System
 
-ExLang has six fundamental keywords, each with a distinct and enforced purpose:
+ExLang keywords fall into three categories: type declarations, structural keywords, and language mechanics.
+
+### Type Declarations
+
+These keywords describe data shape and behavior. They produce types that can be instantiated, passed around, and reasoned about by the compiler.
 
 | Keyword | Purpose | Mutable Fields | Dependency Injection | Compared By |
 |---|---|---|---|---|
 | `dto` | Pure data shape, no behavior | ❌ | ❌ | Value |
 | `object` | Self-contained behavioral type | ❌ | ❌ | Value |
-| `contract` | Abstract dependency boundary | N/A | N/A | N/A |
+| `contract` | Abstract dependency boundary | ❌ | ❌ | N/A |
 | `service` | Stateful type with dependencies | ✅ | ✅ | Reference |
-| `module` | Declares and binds the dependency graph | N/A | N/A | N/A |
-| `annotation` | Declares a reusable metadata tag that can influence compiler behavior | N/A | N/A | N/A |
-| `def` | Instantiation, brings anything into existence | Contextual | N/A | N/A |
-| `conditions` | Named, exhaustive partition of arbitrary predicates | N/A | N/A | N/A |
 
-The key distinction:
+### Structural Keywords
 
-- `dto`, `object`, `contract`, `service`, `module` are **declarations**: they describe shape, behavior, and wiring.
-- `def` is **instantiation**: it brings something into existence.
-- `conditions` is **classification**: it partitions an existing value into named, mutually exclusive cases.
+These keywords describe wiring, metadata, and application topology. They do not produce instantiable types.
 
-`def` appears everywhere: declaring a field, a function, a variable, or a dependency. Its meaning is consistent regardless of context.
+| Keyword | Purpose |
+|---|---|
+| `module` | Declares and binds the dependency graph |
+| `annotation` | Declares a reusable metadata tag that can influence compiler behavior |
+
+### Language Mechanics
+
+These keywords are syntax primitives that operate on types rather than defining them.
+
+| Keyword | Purpose |
+|---|---|
+| `def` | Instantiation. Brings anything into existence: fields, variables, functions, dependencies. |
+| `conditions` | Classification. Promotes arbitrary runtime predicates into a named, exhaustive set of cases that can be switched over. |
 
 ---
 
