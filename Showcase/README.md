@@ -36,11 +36,18 @@ dto OrderResponse {
 }
 ```
 
+DTO fields are always public and read-only. Attempting to reassign them is a compile error.
+
+```
+def p = Address();
+p.street = "123 Main St";  // error: dto fields are read-only
+```
+
 ---
 
 ## Contracts
 
-Abstract dependency boundaries, signatures only.
+Abstract dependency boundaries, signatures only. No fields, no definitions, no default implementations.
 
 ```
 contract Logger {
@@ -213,6 +220,16 @@ object u32 {
 }
 ```
 
+Both call forms are valid once an alias is declared.
+
+```
+def a: u32 = 10;
+def b: u32 = 3;
+
+def c = a.plus(b);   // explicit
+def d = a + b;       // alias
+```
+
 ---
 
 ## Services
@@ -242,7 +259,7 @@ service ConsoleLogger {
 
 ### FileLogger
 
-Implements two contracts in a single annotation.
+Implements two contracts using a single annotation.
 
 ```
 @Implements(Logger, Disposable)
@@ -273,9 +290,31 @@ service FileLogger {
 }
 ```
 
+### NetworkLogger
+
+Implements two contracts using separate `@Implements` annotations. This is equivalent to the single-annotation form above.
+
+```
+@Implements(Logger)
+@Implements(Disposable)
+service NetworkLogger {
+    log(message: String) {
+        // ...
+    }
+
+    warn(message: String) {
+        // ...
+    }
+
+    dispose() {
+        // ...
+    }
+}
+```
+
 ### StripeGateway
 
-`Logger` is a contract field — automatically injected by the compiler. No boilerplate required.
+`Logger` is a contract parameter -- automatically injected by the compiler. No boilerplate required.
 
 ```
 @Implements(PaymentGateway)
@@ -365,7 +404,7 @@ service BaseAuditService(
 
 ### OrderService
 
-The core domain service. Demonstrates inheritance, multiple injected dependencies, mutable state, `def`, type inference, and `is`/`no` conditionals.
+The core domain service. Demonstrates inheritance, multiple injected dependencies, mutable state, `def`, type inference, and `if`/`no` conditionals.
 
 ```
 @Inherits(BaseAuditService)
@@ -389,7 +428,7 @@ service OrderService(
         def reference = buildReference(request.userId);
         def result = gateway.charge(finalAmount, reference);
 
-        is result.success {
+        if result.success {
             def orderId = repository.save(request);
             _processedCount++;
             audit("order.placed");
@@ -405,7 +444,7 @@ service OrderService(
     cancelOrder(orderId: u32) {
         def order = repository.findById(orderId);
 
-        is order == null {
+        if order == null {
             // ...
         }
 
@@ -428,6 +467,133 @@ service OrderService(
     @Hidden
     buildReference(userId: u32): String {
         // ...
+    }
+}
+```
+
+---
+
+## Control Flow
+
+`if` is equivalent to a conditional branch, `no` is equivalent to `else`. There is no `else if`; use `switch` for multi-branch logic.
+
+### if / no
+
+```
+if order == null {
+    // handle missing order
+}
+no {
+    // proceed normally
+}
+```
+
+### switch
+
+`switch` is used for multi-branch logic. Each `case` matches on enum values.
+
+```
+service ShippingService {
+    calculateRoute(direction: Direction): i32 {
+        switch direction {
+            case .North { return turn(90); }
+            case .South { return turn(270); }
+            case .East  { return turn(0); }
+            case .West  { return turn(180); }
+        }
+    }
+
+    @Hidden
+    turn(degrees: i32): i32 {
+        // ...
+    }
+}
+```
+
+---
+
+## Mutability
+
+Local variables are immutable by default. Use `@Mutable` to allow reassignment. Parameters are always immutable and cannot be overridden.
+
+```
+service PricingService {
+    applyPromotions(basePrice: Money, promoCount: i32): Money {
+        // immutable by default
+        def originalPrice = basePrice;
+
+        @Mutable
+        def adjusted = basePrice;
+
+        adjusted = adjusted.subtract(computeDiscount(promoCount));  // ok
+
+        originalPrice = basePrice;  // error: immutable
+        promoCount = 0;             // error: parameters are always immutable
+
+        return adjusted;
+    }
+
+    @Hidden
+    computeDiscount(promoCount: i32): Money {
+        // ...
+    }
+}
+```
+
+---
+
+## Type Inference
+
+`def` infers type from the right-hand side by default. An explicit type annotation changes what the compiler expects the function to return.
+
+```
+service InferenceDemo {
+    run() {
+        // inferred as the default numeric type
+        def x = 0;
+
+        // explicit type annotation: compiler expects doSomething() to return i8
+        def result: i8 = doSomething();
+
+        // explicit type annotation: compiler expects doSomething() to return Stream<i8>
+        def resultList: Stream<i8> = doSomething();
+    }
+
+    @Hidden
+    doSomething() {
+        // ...
+    }
+}
+```
+
+---
+
+## @Const
+
+Marking a function `@Const` disallows any mutation across its entire execution path -- including mutations to instance fields and calls to non-`@Const` functions.
+
+```
+service Lexer {
+    _position: u32;
+    _text: String;
+
+    position: u32 {
+        get => _position;
+    }
+
+    // @Const: no mutation allowed anywhere in this call path
+    @Const
+    peek(): String {
+        def current = _text;       // ok: reading is allowed
+        _position += 1;            // error: mutating instance field
+        advance();                 // error: advance() is not @Const
+        return current;
+    }
+
+    advance() {
+        if _position <= _text.length {
+            _position++;
+        }
     }
 }
 ```
@@ -466,7 +632,7 @@ service ReportService(
 
 ## Modules
 
-Declare and bind the full dependency graph. The compiler statically validates the entire graph — circular dependencies, lifetime mismatches, missing bindings, and unused bindings are all compile errors.
+Declare and bind the full dependency graph. The compiler statically validates the entire graph -- circular dependencies, lifetime mismatches, missing bindings, and unused bindings are all compile errors.
 
 ```
 module AppModule {
