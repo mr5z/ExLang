@@ -394,10 +394,7 @@ service OrderService(
     notifier: Notifier
 ) {
     @Mutable
-    processedCount: i32 {
-        get;
-        set;
-    }
+    processedCount: i32;
 
     placeOrder(request: OrderRequest): OrderResponse {
         def total: Money = calculateTotal(request.items);
