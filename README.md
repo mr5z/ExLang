@@ -193,6 +193,54 @@ object Money {
 }
 ```
 
+#### Instantiation
+
+`object` types do not have an implicit constructor. Instantiation is always done through `make`, which is declared by implementing the `Makeable` contract from the standard library.
+
+`Makeable` enforces two things at the compiler level: direct property construction is forbidden from outside the type, and `make` is the only valid external entry point.
+
+For simple objects with no validation, use `@Generate(Makeable)`. The compiler generates both a nested input `dto` and a default `make` implementation that wraps the result in `Result.ok`:
+
+```
+@Generate(Makeable)
+object Point {
+    x: f32;
+    y: f32;
+}
+
+def p = Point.make(x: 1.0, y: 2.0);
+```
+
+For objects that require validation, implement `Makeable` explicitly. The `make` function receives a nested `Input` dto whose properties mirror the object's own. Inside `make`, direct construction of the object by property name is valid and is enforced by the compiler to be unavailable anywhere else:
+
+```
+@Implements(Makeable)
+object Money {
+    amount: f32;
+    currency: String;
+
+    dto Input {
+        amount: f32;
+        currency: String;
+    }
+
+    make(input: Money.Input): Result<Money> {
+        if input.amount < 0 {
+            return Result.fail("Amount cannot be negative");
+        }
+        return Result.ok(Money(amount: input.amount, currency: input.currency));
+    }
+}
+
+def m = Money.make(amount: 1.0, currency: "USD");
+```
+
+The named parameters at the call site map directly to the properties of the nested `Input` dto. The `Input` type itself is never referenced by name at the call site.
+
+When `@Generate(Makeable)` is used, the compiler generates the `Input` dto automatically. When `Makeable` is implemented explicitly, the developer declares `Input` manually inside the type body. In both cases the call site is identical.
+
+`make` always returns `Result<T>`. This is enforced by the `Makeable` contract and is not overridable. Whether or not there is validation logic inside `make`, the return type is always `Result`. The specifics of how `Result` is handled at the call site are deferred to the error handling spec.
+
 ---
 
 ### `contract`
@@ -407,6 +455,40 @@ module TestModule {
     InMemorySession;
 }
 ```
+
+---
+
+### `conditions`
+
+`conditions` promotes arbitrary runtime predicates into a named, exhaustive set of cases that can be switched over. Each case is a named predicate. Cases are evaluated top to bottom; the first matching case wins.
+
+`conditions` blocks are always exhaustive. The developer is responsible for declaring cases that cover all possible states, and the compiler rejects any `switch` over a `conditions` block with missing cases, the same rule that applies to enum-based `switch`.
+
+```
+conditions WaterPhase {
+    Ice:    temp < 0;
+    Liquid: temp < 100;
+    Steam:  temp >= 100;
+}
+
+switch WaterPhase {
+    case .Ice    => freeze();
+    case .Liquid => liquid();
+    case .Steam  => boil();
+}
+```
+
+The compiler warns if declared predicates overlap, as an unreachable case is almost certainly a bug:
+
+```
+conditions Access {
+    Banned:      isBanned;
+    BannedAdmin: isBanned && isAdmin;  // warning: unreachable, Banned covers this
+    Allowed:     !isBanned;
+}
+```
+
+The unique value of `conditions` over a plain `if`/`no` chain is that the predicate set is declared once and reused across multiple `switch` sites. If the classification logic changes, it changes in one place.
 
 ---
 
@@ -919,6 +1001,12 @@ The following is a summary of all built-in annotations shipped with the standard
 | `@Transient(Contract)` | Module binding | A fresh instance every time it is needed |
 | `@Mock(Module)` | `module` | Shadows bindings from the target module for testing purposes |
 
+### Code Generation
+
+| Annotation | Valid On | Effect |
+|---|---|---|
+| `@Generate(Contract)` | `object` | Instructs the compiler to emit a default implementation of the given contract. The generated implementation behaves identically to one written by hand. |
+
 ### Tagging
 
 | Annotation | Valid On | Effect |
@@ -933,8 +1021,9 @@ The following is a summary of all built-in annotations shipped with the standard
 - Should `contract` support default implementations?
 - What is the concurrency model? Does the `@Tag` system extend to async boundaries?
 - What is the full null safety spec beyond `String?`?
-- How does error handling work? Exceptions, result types, or something new?
+- How does error handling work? Exceptions, result types, or something new? This directly affects how `Result` returned from `make` is handled at the call site.
 - Should generics support variance annotations?
 - Should mutable local variables use `@Mutable` as an annotation or a dedicated keyword?
 - Can a `conditions` block reference variables outside its declaration scope, or is it always bound to a single variable?
+- `Self.Input` implies type-level property access on a nested type declaration. The full spec for nested types and type-level property access is unresolved.
 - For annotation-specific open questions, see [Annotations/README.md](Annotations/README.md).
