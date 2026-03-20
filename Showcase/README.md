@@ -52,10 +52,15 @@ contract PaymentGateway {
 contract OrderRepository {
     save(order: OrderRequest): u32;
     findById(id: u32): OrderRequest?;
+    findByStatus(status: OrderStatus): List<OrderRequest>;
 }
 
 contract Notifier {
     notify(userId: u32, message: String);
+}
+
+contract ReportGenerator {
+    generate(orders: List<OrderRequest>): Report;
 }
 ```
 
@@ -78,26 +83,31 @@ object Money {
         get => _currency;
     }
 
+    @Const
     @Exposed
     add(other: Money): Money {
         // ...
     }
 
+    @Const
     @Exposed
     subtract(other: Money): Money {
         // ...
     }
 
+    @Const
     @Exposed
     isZero(): Bool {
         // ...
     }
 
+    @Const
     @Exposed
     isGreaterThan(other: Money): Bool {
         // ...
     }
 
+    @Const
     roundToTwoDecimals(value: f32): f32 {
         // ...
     }
@@ -115,6 +125,7 @@ object Discount {
         get => _rate;
     }
 
+    @Const
     @Exposed
     apply(price: Money): Money {
         // ...
@@ -157,15 +168,18 @@ object Receipt {
         get => _total;
     }
 
+    @Const
     @Exposed
     print() {
         // ...
     }
 
+    @Const
     formatLine(item: OrderItem): String {
         // ...
     }
 
+    @Const
     formatTotal(): String {
         // ...
     }
@@ -177,31 +191,44 @@ object Receipt {
 ## Function Aliases
 
 ```
-contract Numeric {
-    @Alias("+")
-    plus(other: Self): Self;
-
-    @Alias("-")
-    minus(other: Self): Self;
-
-    @Alias(">")
-    greaterThan(other: Self): Bool;
+contract Mergeable {
+    @Alias("|")
+    merge(other: Self): Self;
 }
 
-@Implements(Numeric)
-object u32 {
-    plus(other: u32): u32 => self._value + other._value;
-    minus(other: u32): u32 => self._value - other._value;
-    greaterThan(other: u32): Bool => self._value > other._value;
+contract Discountable {
+    @Alias(">>")
+    applyDiscount(discount: Discount): Self;
+}
+
+@Implements(Mergeable)
+@Implements(Discountable)
+object Cart {
+    _items: List<OrderItem>;
+
+    items: List<OrderItem> {
+        get => _items;
+    }
+
+    merge(other: Cart): Cart => Cart(_items: _items + other._items);
+
+    applyDiscount(discount: Discount): Cart {
+        // ...
+    }
 }
 ```
 
 ```
-def a: u32 = 10;
-def b: u32 = 3;
+def guestCart = Cart(_items: List(ItemA, ItemB));
+def savedCart = Cart(_items: List(ItemC));
 
-def c = a.plus(b);
-def d = a + b;
+def combined = guestCart.merge(savedCart);
+def merged   = guestCart | savedCart;
+
+def seasonal = SeasonalDiscount(_rate: 0.1, _label: "Summer Sale");
+
+def discounted = guestCart.applyDiscount(seasonal);
+def aliased    = guestCart >> seasonal;
 ```
 
 ---
@@ -294,6 +321,7 @@ service StripeGateway(
         // ...
     }
 
+    @Const
     @Hidden
     buildPayload(amount: Money, reference: String): String {
         // ...
@@ -313,14 +341,22 @@ service StripeGateway(
 service PostgresOrderRepository(
     logger: Logger
 ) {
+    @Tag(.IO)
     save(order: OrderRequest): u32 {
         // ...
     }
 
+    @Tag(.IO)
     findById(id: u32): OrderRequest? {
         // ...
     }
 
+    @Tag(.IO)
+    findByStatus(status: OrderStatus): List<OrderRequest> {
+        // ...
+    }
+
+    @Const
     @Hidden
     serialize(order: OrderRequest): String {
         // ...
@@ -383,7 +419,14 @@ service OrderService(
     placeOrder(request: OrderRequest): OrderResponse {
         def total = calculateTotal(request.items);
         def discount = resolveDiscount(request.userId);
-        def finalAmount = discount.apply(total);
+
+        @Mutable
+        def finalAmount: Money = discount.apply(total);
+
+        if request.items.length > 10 {
+            def bulkDiscount = Discount(_rate: 0.05);
+            finalAmount = bulkDiscount.apply(finalAmount);
+        }
 
         def reference = buildReference(request.userId);
         def result = gateway.charge(finalAmount, reference);
@@ -414,151 +457,79 @@ service OrderService(
         notifier.notify(order.userId, "Your order has been cancelled.");
     }
 
+    routeOrder(order: OrderRequest) {
+        switch order.status {
+            case .Pending   { processPending(order); }
+            case .Paid      { processPayment(order); }
+            case .Shipped   { notifyShipped(order); }
+            case .Cancelled { processCancellation(order); }
+        }
+    }
+
+    @Const
     @Hidden
     calculateTotal(items: List<OrderItem>): Money {
         // ...
     }
 
+    @Const
     @Hidden
     resolveDiscount(userId: u32): Discount {
         // ...
     }
 
+    @Const
     @Hidden
     buildReference(userId: u32): String {
         // ...
     }
-}
-```
 
----
-
-## Control Flow
-
-### if / no
-
-```
-if order == null {
-    // ...
-}
-no {
-    // ...
-}
-```
-
-### switch
-
-```
-service ShippingService {
-    calculateRoute(direction: Direction): i32 {
-        switch direction {
-            case .North { return turn(90); }
-            case .South { return turn(270); }
-            case .East  { return turn(0); }
-            case .West  { return turn(180); }
-        }
+    @Hidden
+    processPending(order: OrderRequest) {
+        // ...
     }
 
     @Hidden
-    turn(degrees: i32): i32 {
+    processPayment(order: OrderRequest) {
+        // ...
+    }
+
+    @Hidden
+    notifyShipped(order: OrderRequest) {
+        // ...
+    }
+
+    @Hidden
+    processCancellation(order: OrderRequest) {
         // ...
     }
 }
 ```
 
----
-
-## Mutability
+### OrderReportService
 
 ```
-service PricingService {
-    applyPromotions(basePrice: Money, promoCount: i32): Money {
-        def originalPrice = basePrice;
-
-        @Mutable
-        def adjusted = basePrice;
-
-        adjusted = adjusted.subtract(computeDiscount(promoCount));
-
-        return adjusted;
-    }
-
-    @Hidden
-    computeDiscount(promoCount: i32): Money {
-        // ...
-    }
-}
-```
-
----
-
-## Type Inference
-
-```
-service InferenceDemo {
-    run() {
-        def x = 0;
-        def result: i8 = doSomething();
-        def resultList: Stream<i8> = doSomething();
-    }
-
-    @Hidden
-    doSomething() {
-        // ...
-    }
-}
-```
-
----
-
-## @Const
-
-```
-service Lexer {
-    _position: u32;
-    _text: String;
-
-    position: u32 {
-        get => _position;
-    }
-
-    @Const
-    peek(): String {
-        def current = _text;
-        return current;
-    }
-
-    advance() {
-        if _position <= _text.length {
-            _position++;
-        }
-    }
-}
-```
-
----
-
-## Tagging
-
-```
-service ReportService(
+@Implements(ReportGenerator)
+service OrderReportService(
     repository: OrderRepository,
     logger: Logger
 ) {
     @Tag(.IO)
-    fetchOrderData(orderId: u32): OrderRequest? {
-        // ...
+    fetchPendingOrders(): List<OrderRequest> {
+        return repository.findByStatus(.Pending);
     }
 
     @Tag(.CPU)
-    computeSummary(orders: List<OrderRequest>): f32 {
+    generate(orders: List<OrderRequest>): Report {
         // ...
     }
 
-    generateReport(orderId: u32) {
-        def order = fetchOrderData(orderId);
-        def summary = computeSummary(List(order));
-        // ...
+    // TODO: fetchPendingOrders() is @Tag(.IO) and generate() is @Tag(.CPU) -- mixed bounds.
+    // Once async is a language feature, fetchPendingOrders() should be awaited
+    // before handing off to generate() on a separate execution context.
+    summarize(status: OrderStatus): Report {
+        def orders = fetchPendingOrders();
+        return generate(orders);
     }
 }
 ```
@@ -580,6 +551,9 @@ module AppModule {
 
     @Transient(Notifier)
     EmailNotifier;
+
+    @Scoped(ReportGenerator)
+    OrderReportService;
 }
 ```
 
@@ -604,11 +578,17 @@ service StubGateway {
 service InMemoryOrderRepository {
     save(order: OrderRequest): u32 { }
     findById(id: u32): OrderRequest? { }
+    findByStatus(status: OrderStatus): List<OrderRequest> { }
 }
 
 @Implements(Notifier)
 service SilentNotifier {
     notify(userId: u32, message: String) { }
+}
+
+@Implements(ReportGenerator)
+service StubReportGenerator {
+    generate(orders: List<OrderRequest>): Report { }
 }
 
 @Mock(AppModule)
@@ -624,5 +604,8 @@ module TestModule {
 
     @Transient(Notifier)
     SilentNotifier;
+
+    @Scoped(ReportGenerator)
+    StubReportGenerator;
 }
 ```
