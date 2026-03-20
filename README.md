@@ -802,15 +802,12 @@ n = n + 1;  // possible due to function alias
 ### Self and Access to Implementing Type
 
 ```
-contract Role { self ->
-
-    // Self: type of the implementing class
-    // self: instance variable (like 'this'), renameable
+contract Role {
     assign(other: Self): Self;
 }
 
 @Implements(Role)
-object UserRole { this ->
+object UserRole {
 
     // Self is now UserRole
     assign(other: UserRole): UserRole {
