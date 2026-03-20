@@ -195,23 +195,16 @@ object Money {
 
 #### Instantiation
 
-`object` types do not have an implicit constructor. Instantiation is always done through `make`, which is declared by implementing the `Makeable` contract from the standard library.
-
-`Makeable` enforces two things at the compiler level: direct property construction is forbidden from outside the type, and `make` is the only valid external entry point.
-
-For simple objects with no validation, use `@Generate(Makeable)`. The compiler generates both a nested input `dto` and a default `make` implementation that wraps the result in `Result.ok`:
+By default, objects are instantiated directly by providing values for all properties by name:
 
 ```
-@Generate(Makeable)
-object Point {
-    x: f32;
-    y: f32;
-}
-
-def p = Point.make(x: 1.0, y: 2.0);
+def p = Point(x: 1.0, y: 2.0);
+def t = Temperature(celsius: 100.0);
 ```
 
-For objects that require validation, implement `Makeable` explicitly. The `make` function receives a nested `Input` dto whose properties mirror the object's own. Inside `make`, direct construction of the object by property name is valid and is enforced by the compiler to be unavailable anywhere else:
+This is the standard path. It is concise and sufficient for objects that carry no construction-time invariants.
+
+When an object requires validation at construction time, it can opt into the `Makeable` contract using `@Implements(Makeable)`. This disables direct construction from outside the type and gates all instantiation through a `make` function, which always returns `Result<T>`.
 
 ```
 @Implements(Makeable)
@@ -233,13 +226,16 @@ object Money {
 }
 
 def m = Money.make(amount: 1.0, currency: "USD");
+def bad = Money(amount: 1.0, currency: "USD");  // compile error: direct construction disabled
 ```
+
+The `make` function receives a nested `Input` dto whose properties mirror the object's own. Inside `make`, direct construction of the object by property name is valid and is enforced by the compiler to be unavailable anywhere else.
 
 The named parameters at the call site map directly to the properties of the nested `Input` dto. The `Input` type itself is never referenced by name at the call site.
 
-When `@Generate(Makeable)` is used, the compiler generates the `Input` dto automatically. When `Makeable` is implemented explicitly, the developer declares `Input` manually inside the type body. In both cases the call site is identical.
+`make` always returns `Result<T>`. This is enforced by the `Makeable` contract and is not overridable. The specifics of how `Result` is handled at the call site are deferred to the error handling spec.
 
-`make` always returns `Result<T>`. This is enforced by the `Makeable` contract and is not overridable. Whether or not there is validation logic inside `make`, the return type is always `Result`. The specifics of how `Result` is handled at the call site are deferred to the error handling spec.
+> Note: The split between direct construction and `Makeable` is intentional but provisional. The longer-term direction is to make safe construction the default and direct construction the explicit opt-in. This will be revisited once the error handling spec is settled.
 
 ---
 
@@ -979,7 +975,7 @@ The following is a summary of all built-in annotations shipped with the standard
 
 | Annotation | Valid On | Effect |
 |---|---|---|
-| `@Implements(Contract, ...)` | `object`, `service` | Declares that this type fulfills one or more contracts |
+| `@Implements(Contract, ...)` | `object`, `service` | Declares that this type fulfills one or more contracts. When used with `Makeable`, disables direct construction and gates instantiation through `make`. |
 | `@Alias("op")` | `contract` method signatures | Allows the method to be called using an operator or shorthand symbol |
 
 ### Inheritance
@@ -997,12 +993,6 @@ The following is a summary of all built-in annotations shipped with the standard
 | `@Scoped(Contract)` | Module binding | One instance per logical scope (e.g., a request or session) |
 | `@Transient(Contract)` | Module binding | A fresh instance every time it is needed |
 | `@Mock(Module)` | `module` | Shadows bindings from the target module for testing purposes |
-
-### Code Generation
-
-| Annotation | Valid On | Effect |
-|---|---|---|
-| `@Generate(Contract)` | `object` | Instructs the compiler to emit a default implementation of the given contract. The generated implementation behaves identically to one written by hand. |
 
 ### Tagging
 
@@ -1023,4 +1013,5 @@ The following is a summary of all built-in annotations shipped with the standard
 - Should mutable local variables use `@Mutable` as an annotation or a dedicated keyword?
 - Can a `conditions` block reference variables outside its declaration scope, or is it always bound to a single variable?
 - `Self.Input` implies type-level property access on a nested type declaration. The full spec for nested types and type-level property access is unresolved.
+- When should `@Implements(Makeable)` be required vs. optional? The current model (opt-in) is provisional. The longer-term direction is to make safe construction the default.
 - For annotation-specific open questions, see [Annotations/README.md](Annotations/README.md).
