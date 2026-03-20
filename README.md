@@ -138,7 +138,6 @@ Properties can opt into mutability with `@Mutable`. Custom getter and setter log
 object Temperature {
     _value: f32;
 
-    @Mutable
     celsius: f32 {
         get => _value;
         set => _value = value;
