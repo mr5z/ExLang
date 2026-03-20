@@ -25,11 +25,14 @@ dto OrderRequest {
     userId: u32;
     items: List<OrderItem>;
     shippingAddress: Address;
+    isPaid: Bool;
+    isShipped: Bool;
+    isCancelled: Bool;
 }
 
 dto OrderResponse {
     orderId: u32;
-    status: String;
+    status: OrderStatus;
     total: f32;
 }
 ```
@@ -52,7 +55,7 @@ contract PaymentGateway {
 contract OrderRepository {
     save(order: OrderRequest): u32;
     findById(id: u32): OrderRequest?;
-    findByStatus(status: OrderStatus): List<OrderRequest>;
+    findAll(): List<OrderRequest>;
 }
 
 contract Notifier {
@@ -73,14 +76,14 @@ contract ReportGenerator {
 ```
 object Money {
     _amount: f32;
-    _currency: String;
+    currency: String;
 
     amount: f32 {
-        get => _amount;
+        get => roundToTwoDecimals(_amount);
     }
 
-    currency: String {
-        get => _currency;
+    rawAmount: f32 {
+        get => _amount;
     }
 
     @Const
@@ -119,10 +122,10 @@ object Money {
 ```
 @Extensible
 object Discount {
-    _rate: f32;
-
+    @Mutable
     rate: f32 {
-        get => _rate;
+        get;
+        set => field = value < 0.0 ? 0.0 : value > 1.0 ? 1.0 : value;
     }
 
     @Const
@@ -130,19 +133,11 @@ object Discount {
     apply(price: Money): Money {
         // ...
     }
-
-    clampRate(rate: f32): f32 {
-        // ...
-    }
 }
 
 @Inherits(Discount)
 object SeasonalDiscount {
-    _label: String;
-
-    label: String {
-        get => _label;
-    }
+    label: String;
 
     @Exposed
     describe(): String {
@@ -156,17 +151,9 @@ object SeasonalDiscount {
 ```
 @Implements(Printable)
 object Receipt {
-    _orderId: u32;
-    _total: Money;
+    orderId: u32;
+    total: Money;
     _items: List<OrderItem>;
-
-    orderId: u32 {
-        get => _orderId;
-    }
-
-    total: Money {
-        get => _total;
-    }
 
     @Const
     @Exposed
@@ -204,13 +191,9 @@ contract Discountable {
 @Implements(Mergeable)
 @Implements(Discountable)
 object Cart {
-    _items: List<OrderItem>;
+    items: List<OrderItem>;
 
-    items: List<OrderItem> {
-        get => _items;
-    }
-
-    merge(other: Cart): Cart => Cart(_items: _items + other._items);
+    merge(other: Cart): Cart => Cart(items: items + other.items);
 
     applyDiscount(discount: Discount): Cart {
         // ...
@@ -219,16 +202,16 @@ object Cart {
 ```
 
 ```
-def guestCart = Cart(_items: List(ItemA, ItemB));
-def savedCart = Cart(_items: List(ItemC));
+def guestCart: Cart = Cart(items: List(ItemA, ItemB));
+def savedCart: Cart = Cart(items: List(ItemC));
 
-def combined = guestCart.merge(savedCart);
-def merged   = guestCart | savedCart;
+def combined: Cart = guestCart.merge(savedCart);
+def merged: Cart   = guestCart | savedCart;
 
-def seasonal = SeasonalDiscount(_rate: 0.1, _label: "Summer Sale");
+def seasonal: SeasonalDiscount = SeasonalDiscount(rate: 0.1, label: "Summer Sale");
 
-def discounted = guestCart.applyDiscount(seasonal);
-def aliased    = guestCart >> seasonal;
+def discounted: Cart = guestCart.applyDiscount(seasonal);
+def aliased: Cart    = guestCart >> seasonal;
 ```
 
 ---
@@ -352,7 +335,7 @@ service PostgresOrderRepository(
     }
 
     @Tag(.IO)
-    findByStatus(status: OrderStatus): List<OrderRequest> {
+    findAll(): List<OrderRequest> {
         // ...
     }
 
@@ -410,30 +393,30 @@ service OrderService(
     repository: OrderRepository,
     notifier: Notifier
 ) {
-    _processedCount: i32;
-
+    @Mutable
     processedCount: i32 {
-        get => _processedCount;
+        get;
+        set;
     }
 
     placeOrder(request: OrderRequest): OrderResponse {
-        def total = calculateTotal(request.items);
-        def discount = resolveDiscount(request.userId);
+        def total: Money = calculateTotal(request.items);
+        def discount: Discount = resolveDiscount(request.userId);
 
         @Mutable
         def finalAmount: Money = discount.apply(total);
 
         if request.items.length > 10 {
-            def bulkDiscount = Discount(_rate: 0.05);
+            def bulkDiscount: Discount = Discount(rate: 0.05);
             finalAmount = bulkDiscount.apply(finalAmount);
         }
 
-        def reference = buildReference(request.userId);
-        def result = gateway.charge(finalAmount, reference);
+        def reference: String = buildReference(request.userId);
+        def result: Result = gateway.charge(finalAmount, reference);
 
         if result.success {
-            def orderId = repository.save(request);
-            _processedCount++;
+            def orderId: u32 = repository.save(request);
+            processedCount++;
             audit("order.placed");
             notifier.notify(request.userId, "Your order has been placed.");
             // ...
@@ -445,24 +428,31 @@ service OrderService(
     }
 
     cancelOrder(orderId: u32) {
-        def order = repository.findById(orderId);
+        def order: OrderRequest? = repository.findById(orderId);
 
         if order == null {
             // ...
         }
 
-        def reference = buildReference(order.userId);
+        def reference: String = buildReference(order.userId);
         gateway.refund(reference);
         audit("order.cancelled");
         notifier.notify(order.userId, "Your order has been cancelled.");
     }
 
     routeOrder(order: OrderRequest) {
-        switch order.status {
-            case .Pending   { processPending(order); }
-            case .Paid      { processPayment(order); }
-            case .Shipped   { notifyShipped(order); }
-            case .Cancelled { processCancellation(order); }
+        conditions OrderStatus {
+            Cancelled: order.isCancelled;
+            Pending:   !order.isPaid && !order.isCancelled;
+            Paid:      order.isPaid && !order.isShipped;
+            Shipped:   order.isPaid && order.isShipped;
+        }
+
+        switch OrderStatus(order) {
+            case .Pending   => processPending(order);
+            case .Paid      => processPayment(order);
+            case .Shipped   => notifyShipped(order);
+            case .Cancelled => processCancellation(order);
         }
     }
 
@@ -515,8 +505,8 @@ service OrderReportService(
     logger: Logger
 ) {
     @Tag(.IO)
-    fetchPendingOrders(): List<OrderRequest> {
-        return repository.findByStatus(.Pending);
+    fetchOrders(): List<OrderRequest> {
+        return repository.findAll();
     }
 
     @Tag(.CPU)
@@ -524,11 +514,22 @@ service OrderReportService(
         // ...
     }
 
+    @Const
+    @Hidden
+    priorityLabel(order: OrderRequest): String {
+        return switch OrderStatus(order) {
+            case .Cancelled => "none";
+            case .Pending   => "high";
+            case .Paid      => "medium";
+            case .Shipped   => "low";
+        };
+    }
+
     // TODO: fetchPendingOrders() is @Tag(.IO) and generate() is @Tag(.CPU) -- mixed bounds.
     // Once async is a language feature, fetchPendingOrders() should be awaited
     // before handing off to generate() on a separate execution context.
     summarize(status: OrderStatus): Report {
-        def orders = fetchPendingOrders();
+        def orders: List<OrderRequest> = fetchOrders();
         return generate(orders);
     }
 }
@@ -578,7 +579,7 @@ service StubGateway {
 service InMemoryOrderRepository {
     save(order: OrderRequest): u32 { }
     findById(id: u32): OrderRequest? { }
-    findByStatus(status: OrderStatus): List<OrderRequest> { }
+    findAll(): List<OrderRequest> { }
 }
 
 @Implements(Notifier)
