@@ -132,7 +132,7 @@ object Money {
 }
 ```
 
-Properties can opt into mutability with `@Mutable`. Custom getter and setter logic is supported via an explicit accessor block. See [Properties](#properties) for the full property model.
+Properties can opt into mutability with `@Mutable`. Custom getter and setter logic uses an explicit accessor block. See [Properties](#properties) for the full property model.
 
 ```
 object Temperature {
@@ -458,9 +458,9 @@ module TestModule {
 
 ### `conditions`
 
-`conditions` promotes arbitrary runtime predicates into a named, exhaustive set of cases that can be switched over. Each case is a named predicate. Cases are evaluated top to bottom; the first matching case wins.
+`conditions` promotes arbitrary runtime predicates into a named set of cases that can be switched over. Each case is a named predicate. Cases are evaluated top to bottom; the first matching case wins.
 
-`conditions` blocks are always exhaustive. The developer is responsible for declaring cases that cover all possible states, and the compiler rejects any `switch` over a `conditions` block with missing cases, the same rule that applies to enum-based `switch`.
+The developer is responsible for declaring cases that cover all possible states. Any `switch` over a `conditions` block must be exhaustive -- the compiler rejects missing cases, the same rule that applies to enum-based `switch`.
 
 ```
 conditions WaterPhase {
@@ -486,7 +486,31 @@ conditions Access {
 }
 ```
 
-The unique value of `conditions` over a plain `if`/`no` chain is that the predicate set is declared once and reused across multiple `switch` sites. If the classification logic changes, it changes in one place.
+`switch` over a `conditions` block works in both statement and expression forms:
+
+```
+def label = switch WaterPhase {
+    case .Ice    => "ice";
+    case .Liquid => "liquid";
+    case .Steam  => "steam";
+}
+```
+
+The key advantage of `conditions` over a plain `if`/`no` chain is that the predicate set is declared once and reused across multiple `switch` sites. If the classification logic changes, it changes in one place:
+
+```
+switch WaterPhase {
+    case .Ice    => applyIceShader();
+    case .Liquid => applyWaterShader();
+    case .Steam  => applySteamShader();
+}
+
+switch WaterPhase {
+    case .Ice    => playIceSound();
+    case .Liquid => playWaterSound();
+    case .Steam  => playSteamSound();
+}
+```
 
 ---
 
@@ -550,11 +574,9 @@ When a property only needs simple storage, no explicit field is required. The co
 
 ### Properties
 
-A property is the public surface of a type's state. Properties are read-only by default across all types. Use `@Mutable` to opt into mutability.
+A property is the public surface of a type's state. Properties are read-only by default across all types. `object` and `service` properties can opt into mutability via `@Mutable` or by declaring a setter. `dto` properties are always read-only.
 
-There are two forms:
-
-**Bare property.** No accessor block. The compiler manages storage implicitly.
+A property is declared as `name: Type`. The compiler manages storage implicitly. No accessor block is required.
 
 ```
 dto Point {
@@ -575,7 +597,20 @@ service Counter {
 }
 ```
 
-**Explicit property.** Has an accessor block with `get =>` and optionally `set;` or `set =>`. The compiler provides an automatic backing store accessible as `field` inside the block. `value` refers to the incoming value in a setter.
+When custom accessor logic is needed, a property can declare an accessor block with `get` and optionally `set`. The compiler provides an automatic backing store accessible as `field` inside the block. `value` refers to the incoming value in a setter.
+
+Accessor blocks come in three forms:
+
+**Bare.** `get;` and `set;` -- no custom logic. `get;` reads directly from `field`. `set;` writes `value` directly into `field`. Shorthand for the common case of simple pass-through storage.
+
+```
+count: i32 {
+    get;
+    set;
+}
+```
+
+**Single-line.** `get =>` and `set =>` -- an expression on the right-hand side.
 
 ```
 // read-only with custom getter
@@ -583,18 +618,27 @@ exchangeRate: f32 {
     get => field * adjustmentFactor;
 }
 
-// mutable, simple setter - stores value directly into field
-@Mutable
-discount: f32 {
-    get => field * 100;
-    set;
-}
-
-// mutable, custom setter logic
+// mutable with custom setter logic
 @Mutable
 tax: f32 {
     get => field * taxRate;
     set => field = value / taxRate;
+}
+```
+
+**Multi-line.** `get { ... }` and `set { ... }` -- a block body for more complex logic.
+
+```
+@Mutable
+quantity: i32 {
+    get {
+        log("quantity read");
+        return field;
+    }
+    set {
+        log("quantity written");
+        field = value > 0 ? value : 0;
+    }
 }
 ```
 
@@ -607,7 +651,7 @@ The following rules apply across all types:
 | `dto` properties | Always read-only. `@Mutable` and `set` are compile errors. |
 | `object` properties | Read-only by default. `@Mutable` to opt in. Copy-by-value on assignment. |
 | `service` properties | Read-only by default. `@Mutable` to opt in. |
-| `@Mutable` with `set` body | Compiler warning: redundant. |
+| `@Mutable` with a setter | Compiler warning: redundant. A setter already implies mutability. |
 | `field` | Automatic backing store inside accessor blocks. |
 | `value` | The incoming value in a `set =>` body. |
 
@@ -667,8 +711,8 @@ Mutability is contextual:
 |---|---|---|
 | Local variables | Immutable | `@Mutable` to make mutable |
 | Parameters | Immutable | Not overridable |
-| `object` properties | Read-only | `@Mutable` to opt in |
-| `service` properties | Read-only | `@Mutable` to opt in |
+| `object` properties | Read-only | `@Mutable` to opt in, or declare a setter |
+| `service` properties | Read-only | `@Mutable` to opt in, or declare a setter |
 | `dto` properties | Read-only | Not overridable |
 
 ```
@@ -872,48 +916,11 @@ switch direction {
 
 ### `conditions`
 
-`conditions` promotes arbitrary runtime predicates into a named, exhaustive set of cases that can be switched over. Each case is a named predicate. Cases are evaluated top to bottom; the first matching case wins.
+See [`conditions` in the Declaration Reference](#conditions) for the full definition.
 
-`conditions` blocks are always exhaustive. The developer is responsible for declaring cases that cover all possible states, and the compiler rejects any `switch` over a `conditions` block with missing cases, the same rule that applies to enum-based `switch`.
-
-```
-conditions WaterPhase {
-    Ice:    temp < 0;
-    Liquid: temp < 100;
-    Steam:  temp >= 100;
-}
-
-switch WaterPhase {
-    case .Ice    => freeze();
-    case .Liquid => liquid();
-    case .Steam  => boil();
-}
-```
-
-`conditions` can also be used with the expression form of `switch`:
+`switch` over a `conditions` block supports both statement and expression forms. Because the predicate set is declared once, multiple `switch` sites stay consistent automatically:
 
 ```
-def label = switch WaterPhase {
-    case .Ice    => "ice";
-    case .Liquid => "liquid";
-    case .Steam  => "steam";
-}
-```
-
-The compiler warns if declared predicates overlap, as an unreachable case is almost certainly a bug:
-
-```
-conditions Access {
-    Banned:      isBanned;
-    BannedAdmin: isBanned && isAdmin;  // warning: unreachable, Banned covers this
-    Allowed:     !isBanned;
-}
-```
-
-The unique value of `conditions` over a plain `if`/`no` chain is that the predicate set is declared once and reused across multiple `switch` sites. If the classification logic changes, it changes in one place:
-
-```
-// Both switch sites stay consistent automatically
 switch WaterPhase {
     case .Ice    => applyIceShader();
     case .Liquid => applyWaterShader();
