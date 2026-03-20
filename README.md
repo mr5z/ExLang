@@ -665,9 +665,7 @@ All fields must be prefixed with `_`. This is enforced by the compiler. The pref
 object Money {
     _amount: f32;       // field: prefixed
 
-    amount: f32 {       // property: no prefix
-        get => _amount;
-    }
+    amount: f32;        // property: no prefix
 
     add(other: Money): Money {
         def result = _amount + other.amount;  // local variable: no prefix
