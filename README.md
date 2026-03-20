@@ -136,17 +136,20 @@ Properties can opt into mutability with `@Mutable`. Custom getter and setter log
 
 ```
 object Temperature {
-    @Mutable
-    celsius: f32;                    // bare, mutable
+    _value: f32;
 
-    fahrenheit: f32 {                // read-only, custom getter
-        get => field * 9 / 5 + 32;
+    @Mutable
+    celsius: f32 {
+        get => _value;
+        set => _value = value;
     }
 
-    @Mutable
-    kelvin: f32 {                    // mutable, custom getter and setter
-        get => field + 273.15;
-        set => field = value - 273.15;
+    fahrenheit: f32 {
+        get => _value * 9 / 5 + 32;
+    }
+
+    kelvin: f32 {
+        get => _value + 273.15;
     }
 }
 ```
