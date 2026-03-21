@@ -39,6 +39,25 @@ dto OrderResponse {
 
 ---
 
+## Enums
+
+```
+enum MoneyError {
+    NegativeAmount {
+        message: String;
+    };
+    ExceedsLimit;
+}
+
+enum CurrencyError {
+    UnsupportedCurrency {
+        message: String;
+    };
+}
+```
+
+---
+
 ## Contracts
 
 ```
@@ -75,15 +94,18 @@ contract ReportGenerator {
 
 ```
 object Money {
-    _amount: f32;
+    amount: f32;
     currency: String;
 
-    amount: f32 {
-        get => roundToTwoDecimals(_amount);
-    }
-
-    rawAmount: f32 {
-        get => _amount;
+    new(amount: f32, currency: String) {
+        if amount < 0 {
+            throw .NegativeAmount { message: "Amount cannot be negative" };
+        }
+        if amount > 1_000_000 {
+            throw .ExceedsLimit;
+        }
+        self.amount = amount;
+        self.currency = currency;
     }
 
     @Const
@@ -109,11 +131,6 @@ object Money {
     isGreaterThan(other: Money): Bool {
         // ...
     }
-
-    @Const
-    roundToTwoDecimals(value: f32): f32 {
-        // ...
-    }
 }
 ```
 
@@ -122,10 +139,10 @@ object Money {
 ```
 @Extensible
 object Discount {
-    @Mutable
-    rate: f32 {
-        get;
-        set => field = value < 0.0 ? 0.0 : value > 1.0 ? 1.0 : value;
+    rate: f32;
+
+    new(rate: f32) {
+        self.rate = rate < 0.0 ? 0.0 : rate > 1.0 ? 1.0 : rate;
     }
 
     @Const
@@ -138,6 +155,11 @@ object Discount {
 @Inherits(Discount)
 object SeasonalDiscount {
     label: String;
+
+    new(rate: f32, label: String) {
+        self.rate = rate < 0.0 ? 0.0 : rate > 1.0 ? 1.0 : rate;
+        self.label = label;
+    }
 
     @Exposed
     describe(): String {
@@ -153,7 +175,13 @@ object SeasonalDiscount {
 object Receipt {
     orderId: u32;
     total: Money;
-    _items: List<OrderItem>;
+    items: List<OrderItem>;
+
+    new(orderId: u32, total: Money, items: List<OrderItem>) {
+        self.orderId = orderId;
+        self.total = total;
+        self.items = items;
+    }
 
     @Const
     @Exposed
@@ -193,7 +221,13 @@ contract Discountable {
 object Cart {
     items: List<OrderItem>;
 
-    merge(other: Cart): Cart => Cart(items: items + other.items);
+    new(items: List<OrderItem>) {
+        self.items = items;
+    }
+
+    merge(other: Cart): Cart {
+        // ...
+    }
 
     applyDiscount(discount: Discount): Cart {
         // ...
@@ -202,16 +236,16 @@ object Cart {
 ```
 
 ```
-def guestCart: Cart = Cart(items: List(ItemA, ItemB));
-def savedCart: Cart = Cart(items: List(ItemC));
+def guestCart = new Cart(items: List(ItemA, ItemB));
+def savedCart = new Cart(items: List(ItemC));
 
-def combined: Cart = guestCart.merge(savedCart);
-def merged: Cart   = guestCart | savedCart;
+def combined = guestCart.merge(savedCart);
+def merged   = guestCart | savedCart;
 
-def seasonal: SeasonalDiscount = SeasonalDiscount(rate: 0.1, label: "Summer Sale");
+def seasonal = new SeasonalDiscount(rate: 0.1, label: "Summer Sale");
 
-def discounted: Cart = guestCart.applyDiscount(seasonal);
-def aliased: Cart    = guestCart >> seasonal;
+def discounted = guestCart.applyDiscount(seasonal);
+def aliased    = guestCart >> seasonal;
 ```
 
 ---
@@ -397,14 +431,15 @@ service OrderService(
     processedCount: i32;
 
     placeOrder(request: OrderRequest): OrderResponse {
-        def total: Money = calculateTotal(request.items);
-        def discount: Discount = resolveDiscount(request.userId);
+        def total = try new Money(amount: calculateTotal(request.items), currency: "USD");
+
+        def discount = resolveDiscount(request.userId);
 
         @Mutable
         def finalAmount: Money = discount.apply(total);
 
         if request.items.length > 10 {
-            def bulkDiscount: Discount = Discount(rate: 0.05);
+            def bulkDiscount = try new Discount(rate: 0.05);
             finalAmount = bulkDiscount.apply(finalAmount);
         }
 
@@ -455,7 +490,7 @@ service OrderService(
 
     @Const
     @Hidden
-    calculateTotal(items: List<OrderItem>): Money {
+    calculateTotal(items: List<OrderItem>): f32 {
         // ...
     }
 
@@ -522,8 +557,8 @@ service OrderReportService(
         };
     }
 
-    // TODO: fetchPendingOrders() is @Tag(.IO) and generate() is @Tag(.CPU) -- mixed bounds.
-    // Once async is a language feature, fetchPendingOrders() should be awaited
+    // TODO: fetchOrders() is @Tag(.IO) and generate() is @Tag(.CPU): mixed bounds.
+    // Once async is a language feature, fetchOrders() should be awaited
     // before handing off to generate() on a separate execution context.
     summarize(status: OrderStatus): Report {
         def orders: List<OrderRequest> = fetchOrders();
