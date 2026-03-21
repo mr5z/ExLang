@@ -143,7 +143,7 @@ The following annotations ship with the standard library. They are implemented u
 
 | Annotation | Target | Effect |
 |---|---|---|
-| `@Implements(Contract, ...)` | `.Type` | Declares that this type fulfills one or more contracts. When used with `Makeable`, disables direct construction and gates instantiation through `make`. |
+| `@Implements(Contract, ...)` | `.Type` | Declares that this type fulfills one or more contracts. |
 | `@Alias("op")` | `.Function` on `contract` | Allows the method to be called using an operator or shorthand symbol |
 
 ### Inheritance
@@ -180,7 +180,7 @@ The following annotations ship with the standard library. They are implemented u
 
 - What is the full shape of the `Context` API? Which namespaces and methods does it expose?
 - Should third-party annotations have the same level of `Context` access as stdlib annotations, or should access be tiered?
-- How does `@Target` handle its own self-referential case -- what is `@Target`'s own target?
+- How does `@Target` handle its own self-referential case? What is `@Target`'s own target?
 - Can annotations be applied to other annotations beyond `@Target`? For example, could `@Deprecated` be applied to a stdlib annotation?
 - What is the execution model for `init`? Is it run at compile time, and if so, what guarantees exist about ordering when multiple annotations are applied to the same construct?
 - Should annotations support inheritance or composition?
