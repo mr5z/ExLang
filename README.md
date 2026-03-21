@@ -1,8 +1,8 @@
 # ExLang
 
-> **If a pattern is proven and universal, it shouldn't be a pattern. It should be the language.**
+> **If a pattern is proven and universal, it should not be a pattern. It should be the language.**
 
-Design patterns exist largely because languages are missing features. ExLang is an attempt to be intentional and systematic about this from the start, baking industry-standard patterns in as first-class language features, so developers spend cognitive energy on problems that matter, not on boilerplate that doesn't.
+Design patterns exist largely because languages are missing features. ExLang is an attempt to be intentional and systematic about this from the start, baking industry-standard patterns in as first-class language features, so developers spend cognitive energy on problems that matter, not on boilerplate that does not.
 
 The guiding principle for every design decision is: **reduce cognitive load without sacrificing explicitness.**
 
@@ -18,6 +18,7 @@ The guiding principle for every design decision is: **reduce cognitive load with
    - [contract](#contract)
    - [service](#service)
    - [module](#module)
+   - [enum](#enum)
    - [conditions](#conditions)
 4. [Cross-Cutting Rules](#cross-cutting-rules)
    - [Visibility](#visibility)
@@ -26,13 +27,14 @@ The guiding principle for every design decision is: **reduce cognitive load with
    - [Naming Conventions](#naming-conventions)
    - [Mutability](#mutability)
    - [Inheritance and Implementation](#inheritance-and-implementation)
-5. [Instantiation](#instantiation)
-   - [def](#def)
-   - [Type Inference](#type-inference)
-   - [Function Aliases](#function-aliases)
-6. [Control Flow](#control-flow)
-7. [Annotations Reference](#annotations-reference)
-8. [Open Questions](#open-questions)
+   - [Instantiation and Construction](#instantiation-and-construction)
+5. [Control Flow](#control-flow)
+   - [if and no](#if-and-no)
+   - [switch](#switch)
+   - [conditions](#conditions-1)
+   - [throw, try, and catch](#throw-try-and-catch)
+6. [Annotations Reference](#annotations-reference)
+7. [Open Questions](#open-questions)
 
 ---
 
@@ -55,10 +57,11 @@ These keywords describe data shape and behavior. They produce types that can be 
 
 | Keyword | Purpose | Mutable Fields | Dependency Injection | Compared By |
 |---|---|---|---|---|
-| `dto` | Pure data shape, no behavior | ❌ | ❌ | Value |
-| `object` | Self-contained behavioral type | ⚠️ | ❌ | Value |
-| `contract` | Abstract dependency boundary | ❌ | ❌ | N/A |
-| `service` | Stateful type with dependencies | ✅ | ✅ | Reference |
+| `dto` | Pure data shape, no behavior | No | No | Value |
+| `object` | Self-contained behavioral type | Limited | No | Value |
+| `contract` | Abstract dependency boundary | No | No | N/A |
+| `service` | Stateful type with dependencies | Yes | Yes | Reference |
+| `enum` | Named set of cases, each optionally carrying data | No | No | Value |
 
 ### Structural Keywords
 
@@ -75,8 +78,12 @@ These keywords are syntax primitives that operate on types rather than defining 
 
 | Keyword | Purpose |
 |---|---|
-| `def` | Instantiation. Brings anything into existence: fields, variables, functions, dependencies. |
+| `def` | Binding declaration. Binds a name to a value; does not prescribe how the value is constructed. |
+| `new` | Construction entry point for `object` types. Always a member of the object. |
 | `conditions` | Classification. Promotes arbitrary runtime predicates into a named, exhaustive set of cases that can be switched over. |
+| `self` | Refers to the current instance. Valid inside `object` members. |
+| `throw` | Signals a failure from within a `new` body. Must be followed by an enum case. |
+| `try` | Marks a construction expression or block as potentially failing. |
 
 ---
 
@@ -87,6 +94,8 @@ These keywords are syntax primitives that operate on types rather than defining 
 A `dto` is pure data with no behavior, no dependencies, and no identity. Two DTOs with the same property values are considered equal. DTOs are always sealed and cannot be inherited.
 
 A `dto` has no fields. All members are read-only properties declared with bare `name: Type` syntax. The compiler manages storage implicitly. `@Mutable` and setter accessors are not valid on a `dto` and are compile errors.
+
+Because a `dto` has no fields, there is no private storage and no accessor logic. The compiler handles all storage entirely. This is by design: a `dto` that needs private storage or custom accessor logic is no longer purely a data transfer shape and should be rethought as an `object`.
 
 ```
 dto Point {
@@ -103,6 +112,13 @@ dto UserResponse {
 
 DTOs are the standard way to pass data across boundaries: between services, across network calls, in and out of functions. They are automatically serializable.
 
+DTOs are instantiated directly using `{}` syntax, providing all property values by name. This is the only type for which direct construction is valid:
+
+```
+def point = Point { x: 1.0, y: 2.0 };
+def user = UserResponse { id: 1, name: "Alice", email: "alice@example.com" };
+```
+
 ---
 
 ### `object`
@@ -111,26 +127,37 @@ An `object` has behavior but no dependencies. It is defined by its values rather
 
 Properties are read-only by default. Use `@Mutable` to opt into mutability per property. Methods are private by default; use `@Exposed` to surface them as part of the public interface.
 
+#### Construction
+
+Objects are never constructed directly from outside the type. All construction goes through a `new` member, which is the designated entry point. `new` may be overloaded. The compiler enforces that every `new` body assigns all declared properties before returning; an unassigned property is a compile error.
+
+Inside `new`, `self` refers to the instance being constructed and is used to assign properties:
+
 ```
 object Money {
-    amount: f32;       // read-only
-    currency: String;  // read-only
+    amount: f32;
+    currency: Currency;
 
-    @Exposed
-    add(other: Money): Money {
-        // ...
-    }
-
-    @Exposed
-    isZero(): Bool {
-        // ...
-    }
-
-    normalizeAmount(): f32 {
-        // private helper, not exposed
+    new(amount: f32, currency: Currency) {
+        if amount < 0 {
+            throw .NegativeAmount { message: "Amount cannot be negative" };
+        }
+        self.amount = amount;
+        self.currency = currency;
     }
 }
 ```
+
+Direct construction from outside the type is always a compile error, regardless of whether validation is present:
+
+```
+def money = new Money(amount: 1.0, currency: .Usd);  // ok
+def bad = Money { amount: 1.0, currency: .Usd };     // compile error, always
+```
+
+The compiler always treats `new` as potentially failing. See [throw, try, and catch](#throw-try-and-catch) for how failures are handled at the call site.
+
+#### Behavior
 
 Properties can opt into mutability with `@Mutable`. Custom getter and setter logic uses an explicit accessor block. See [Properties](#properties) for the full property model.
 
@@ -156,7 +183,7 @@ object Temperature {
 Objects are copy-by-value. Bare assignment produces an independent copy:
 
 ```
-def a = Temperature(celsius: 100.0);
+def a = new Temperature(celsius: 100.0);
 def b = a;
 b.celsius = 0.0;
 // a.celsius is still 100.0
@@ -186,7 +213,7 @@ An `object` can implement contracts using `@Implements`. It can be used structur
 
 ```
 @Implements(Printable)
-object Money {
+object Receipt {
     // ...
     @Exposed
     print() {
@@ -194,50 +221,6 @@ object Money {
     }
 }
 ```
-
-#### Instantiation
-
-By default, objects are instantiated directly by providing values for all properties by name:
-
-```
-def p = Point(x: 1.0, y: 2.0);
-def t = Temperature(celsius: 100.0);
-```
-
-This is the standard path. It is concise and sufficient for objects that carry no construction-time invariants.
-
-When an object requires validation at construction time, it can opt into the `Makeable` contract using `@Implements(Makeable)`. This disables direct construction from outside the type and gates all instantiation through a `make` function, which always returns `Result<T>`.
-
-```
-@Implements(Makeable)
-object Money {
-    amount: f32;
-    currency: String;
-
-    dto Input {
-        amount: f32;
-        currency: String;
-    }
-
-    make(input: Money.Input): Result<Money> {
-        if input.amount < 0 {
-            return Result.fail("Amount cannot be negative");
-        }
-        return Result.ok(Money(amount: input.amount, currency: input.currency));
-    }
-}
-
-def m = Money.make(amount: 1.0, currency: "USD");
-def bad = Money(amount: 1.0, currency: "USD");  // compile error: direct construction disabled
-```
-
-The `make` function receives a nested `Input` dto whose properties mirror the object's own. Inside `make`, direct construction of the object by property name is valid and is enforced by the compiler to be unavailable anywhere else.
-
-The named parameters at the call site map directly to the properties of the nested `Input` dto. The `Input` type itself is never referenced by name at the call site.
-
-`make` always returns `Result<T>`. This is enforced by the `Makeable` contract and is not overridable. The specifics of how `Result` is handled at the call site are deferred to the error handling spec.
-
-> Note: The split between direct construction and `Makeable` is intentional but provisional. The longer-term direction is to make safe construction the default and direct construction the explicit opt-in. This will be revisited once the error handling spec is settled.
 
 ---
 
@@ -294,7 +277,7 @@ service Rectangle {
     @Mutable
     height: f32 {
         get => field;
-        set => field = value > 0.0 ? value : 0.0;  // clamp to positive
+        set => field = value > 0.0 ? value : 0.0;
     }
 }
 ```
@@ -307,8 +290,8 @@ Constructor dependencies are declared in the service signature. Only `contract` 
 
 ```
 service UserService(
-    gateway: PaymentGateway,   // contract -> injected automatically
-    logger: Logger             // contract -> injected automatically
+    gateway: PaymentGateway,
+    logger: Logger
 ) {
     process(payment: Money): Result {
         // ...
@@ -332,7 +315,6 @@ service ConsoleLogger {
     }
 }
 
-// Multiple contracts, single annotation
 @Implements(Logger, Disposable)
 service FileLogger {
     log(message: String) {
@@ -344,7 +326,6 @@ service FileLogger {
     }
 }
 
-// Multiple contracts, multiple annotations (equivalent to above)
 @Implements(Logger)
 @Implements(Disposable)
 service NetworkLogger {
@@ -388,15 +369,6 @@ service ConsoleLogger {
 A `module` declares the dependency graph for the application. It tells the compiler which concrete `service` type fulfills each `contract`, and what lifetime scope each registration has.
 
 ```
-@Implements(Logger)
-service ConsoleLogger { ... }
-
-@Implements(PaymentGateway)
-service StripeGateway { ... }
-
-@Implements(DatabaseSession)
-service PostgresSession { ... }
-
 module AppModule {
     @Singleton(Logger)
     ConsoleLogger;
@@ -409,7 +381,7 @@ module AppModule {
 }
 ```
 
-The compiler statically analyzes the entire dependency graph from the module declaration. The following are all **compile errors**, not runtime crashes:
+The compiler statically analyzes the entire dependency graph from the module declaration. The following are all compile errors, not runtime crashes:
 
 - Circular dependencies
 - A `@Transient` service injected into a `@Singleton`
@@ -432,15 +404,6 @@ Lifetime is declared at the binding site via the scope annotation:
 Test modules can shadow bindings from the application module using `@Mock`:
 
 ```
-@Implements(Logger)
-service MockLogger { ... }
-
-@Implements(PaymentGateway)
-service StubGateway { ... }
-
-@Implements(DatabaseSession)
-service InMemorySession { ... }
-
 @Mock(AppModule)
 module TestModule {
     @Singleton(Logger)
@@ -456,11 +419,42 @@ module TestModule {
 
 ---
 
+### `enum`
+
+An `enum` declares a named set of cases. Each case may optionally carry associated data, declared using the same `{}` property block syntax used by other types. Cases with no associated data are declared with a bare name followed by `;`.
+
+```
+enum Direction {
+    North;
+    South;
+    East;
+    West;
+}
+
+enum MoneyError {
+    NegativeAmount {
+        message: String;
+    };
+    ExceedsLimit;
+}
+```
+
+Enum cases are referenced using dot notation, with the compiler inferring the enum type from context:
+
+```
+def dir = .North;
+throw .NegativeAmount { message: "Amount cannot be negative" };
+```
+
+Enums are value types. Two enum values are equal if they are the same case and carry the same associated data.
+
+---
+
 ### `conditions`
 
 `conditions` promotes arbitrary runtime predicates into a named set of cases that can be switched over. Each case is a named predicate. Cases are evaluated top to bottom; the first matching case wins.
 
-The developer is responsible for declaring cases that cover all possible states. Any `switch` over a `conditions` block must be exhaustive -- the compiler rejects missing cases, the same rule that applies to enum-based `switch`.
+The developer is responsible for declaring cases that cover all possible states. Any `switch` over a `conditions` block must be exhaustive: the compiler rejects missing cases, the same rule that applies to enum-based `switch`.
 
 ```
 conditions WaterPhase {
@@ -528,23 +522,21 @@ Method visibility follows the nature of each type:
 
 Fields on `object` and `service` are always private, exposed only via explicit properties. This is enforced by the type system, not by annotation.
 
-Developers who prefer explicit annotations for consistency may annotate freely. Using `@Exposed` on an `object` method or `@Hidden` on a `service` method is never redundant, as it signals a deliberate choice.
-
 ```
 object Money {
     _amount: f32;
 
     @Exposed
-    add(other: Money): Money { ... }    // explicitly public
+    add(other: Money): Money { ... }
 
-    normalize(): f32 { ... }           // private by default
+    normalize(): f32 { ... }  // private by default
 }
 
 service UserService {
-    process(payment: Money): Result { ... }   // public by default
+    process(payment: Money): Result { ... }  // public by default
 
     @Hidden
-    validate(payment: Money): Bool { ... }    // explicitly private
+    validate(payment: Money): Bool { ... }  // explicitly private
 }
 ```
 
@@ -554,7 +546,7 @@ service UserService {
 
 A field is private storage owned by a type, used when a property requires custom accessor logic that references state not captured by the automatic `field` backing. Fields are always prefixed with `_` and are never accessible directly from outside the type.
 
-Fields are valid on `object` and `service` only. `dto` has no fields.
+Fields are valid on `object` and `service` only. `dto` has no fields; attempting to declare one is a compile error.
 
 ```
 object Money {
@@ -568,7 +560,27 @@ object Money {
 }
 ```
 
-When a property only needs simple storage, no explicit field is required. The compiler provides an automatic backing store accessible as `field` inside the accessor block. Explicit fields are only needed when state must be shared across multiple properties.
+When a property only needs simple storage, no explicit field is required. The compiler provides an automatic backing store accessible as `field` inside the accessor block. Explicit fields are only needed when state must be shared across multiple properties or when the backing logic is too complex for `field` alone:
+
+```
+object Temperature {
+    _value: f32;
+
+    // Three properties all share the same backing field
+    celsius: f32 {
+        get => _value;
+        set => _value = value;
+    }
+
+    fahrenheit: f32 {
+        get => _value * 9 / 5 + 32;
+    }
+
+    kelvin: f32 {
+        get => _value + 273.15;
+    }
+}
+```
 
 ---
 
@@ -580,12 +592,13 @@ A property is declared as `name: Type`. The compiler manages storage implicitly.
 
 ```
 dto Point {
-    x: f32;        // read-only, always
+    x: f32;
     y: f32;
 }
 
 object Money {
-    amount: f32;   // read-only by default
+    amount: f32;       // read-only
+    currency: String;  // read-only
 
     @Mutable
     discount: f32; // opted into mutability
@@ -601,7 +614,7 @@ When custom accessor logic is needed, a property can declare an accessor block w
 
 Accessor blocks come in three forms:
 
-**Bare.** `get;` and `set;` -- no custom logic. `get;` reads directly from `field`. `set;` writes `value` directly into `field`. Shorthand for the common case of simple pass-through storage.
+**Bare.** `get;` and `set;`: no custom logic. `get;` reads directly from `field`. `set;` writes `value` directly into `field`. Shorthand for the common case of simple pass-through storage.
 
 ```
 count: i32 {
@@ -610,7 +623,7 @@ count: i32 {
 }
 ```
 
-**Single-line.** `get =>` and `set =>` -- an expression on the right-hand side.
+**Single-line.** `get =>` and `set =>`: an expression on the right-hand side.
 
 ```
 // read-only with custom getter
@@ -626,7 +639,7 @@ tax: f32 {
 }
 ```
 
-**Multi-line.** `get { ... }` and `set { ... }` -- a block body for more complex logic.
+**Multi-line.** `get { ... }` and `set { ... }`: a block body for more complex logic.
 
 ```
 @Mutable
@@ -698,6 +711,7 @@ dto Address {
 | Property | None | `dto`, `object`, `service` |
 | Local variable | None | All |
 | Parameter | None | All |
+| `self` | None | `object` members |
 
 ---
 
@@ -752,7 +766,7 @@ dto Point {
     y: f32 { get; }
 }
 
-def p = Point();
+def p = Point { x: 1.0, y: 2.0 };
 p.x = 1.0;  // error, dto properties are read-only
 ```
 
@@ -765,11 +779,11 @@ _position: u32;
 
 @Const
 doSomething() {
-    self._position += 1;  // error (mutating instance field)
-    def i = 4;            // immutable local variable
-    i = 2;                // ok
+    self._position += 1;  // error: mutating instance field
+    def i = 4;
+    i = 2;                // ok: local variable
 
-    advance();            // error (advance is not @Const)
+    advance();            // error: advance is not @Const
 }
 
 advance() {
@@ -786,7 +800,7 @@ advance() {
 | Rule | Detail |
 |---|---|
 | `@Extensible` | May appear on `object` and `service`. Types are sealed by default. |
-| `@Inherits` | May appear **at most once** on any type. Multiple inheritance is not allowed. |
+| `@Inherits` | May appear at most once on any type. Multiple inheritance is not allowed. |
 | `@Inherits` requires `@Extensible` | Inheriting a sealed type is a compile error. |
 | `@Implements` | May appear multiple times, or accept multiple contracts separated by commas. Both forms are equivalent. |
 | `@Implements` on `dto` | Not valid. `dto` cannot implement contracts. |
@@ -796,30 +810,33 @@ advance() {
 
 ---
 
-## Instantiation
+### Instantiation and Construction
 
-### `def`
-
-`def` is used for all instantiation. The compiler infers type from context.
+`def` declares a named binding. It does not prescribe how the value is constructed; that depends on the type. `def` simply binds the result of a construction expression to a name.
 
 ```
-// Local variable, type inferred as a Numeric variant, initial value 0, immutable by default
-def x = 0;
+def x = 0;  // numeric literal, type inferred
+def point = Point { x: 1.0, y: 2.0 };           // dto, direct construction
+def money = new Money(amount: 1.0, currency: .Usd);  // object, through new
 ```
 
----
+Construction rules by type:
 
-### Type Inference
+| Type | Construction | Can Fail |
+|---|---|---|
+| `dto` | Direct, using `{}` syntax | No |
+| `object` | Through `new`, always | Yes |
+| `service` | Never directly, resolved by module | N/A |
+| `enum` | Cases referenced via dot notation | No |
+
+#### Type Inference
 
 ```
-// doSomething() returns either i8 or Stream<i8> based on inferred type
 def result: i8 = doSomething();
 def resultList: Stream<i8> = doSomething();
 ```
 
----
-
-### Function Aliases
+#### Function Aliases
 
 ```
 contract Numeric {
@@ -834,12 +851,10 @@ object u8 {
 
 def n: u8 = 0;
 n = n.plus(1);
-n = n + 1;  // possible due to function alias
+n = n + 1;  // valid due to function alias
 ```
 
----
-
-### Self and Access to Implementing Type
+#### Self and Access to Implementing Type
 
 ```
 contract Role {
@@ -848,8 +863,6 @@ contract Role {
 
 @Implements(Role)
 object UserRole {
-
-    // Self is now UserRole
     assign(other: UserRole): UserRole {
         // ...
     }
@@ -873,6 +886,8 @@ no {
 }
 ```
 
+---
+
 ### `switch`
 
 `switch` is used for multi-branch logic over an enum or a `conditions` block. Cases are exhaustive by default; the compiler rejects a `switch` with missing cases.
@@ -880,7 +895,6 @@ no {
 `switch` can be used as a statement or as an expression. When used as an expression, every case must evaluate to a value of the same type.
 
 ```
-// Statement form
 switch direction {
     case .North => turn(90);
     case .South => turn(270);
@@ -888,7 +902,6 @@ switch direction {
     case .West  => turn(180);
 }
 
-// Expression form - switch evaluates to a value
 def degrees = switch direction {
     case .North => 90;
     case .South => 270;
@@ -912,6 +925,8 @@ switch direction {
 }
 ```
 
+---
+
 ### `conditions`
 
 See [`conditions` in the Declaration Reference](#conditions) for the full definition.
@@ -929,6 +944,77 @@ switch WaterPhase {
     case .Ice    => playIceSound();
     case .Liquid => playWaterSound();
     case .Steam  => playSteamSound();
+}
+```
+
+---
+
+### `throw`, `try`, and `catch`
+
+`throw` signals a failure from within a `new` body. It must be followed by an enum case, with an optional associated data block. The enum case acts as the error code; associated data is the conventional place for a human-readable message.
+
+```
+enum MoneyError {
+    NegativeAmount {
+        message: String;
+    };
+    ExceedsLimit;
+}
+
+object Money {
+    amount: f32;
+    currency: Currency;
+
+    new(amount: f32, currency: Currency) {
+        if amount < 0 {
+            throw .NegativeAmount { message: "Amount cannot be negative" };
+        }
+        if amount > 1_000_000 {
+            throw .ExceedsLimit;
+        }
+        self.amount = amount;
+        self.currency = currency;
+    }
+}
+```
+
+The compiler always treats `new` as potentially failing. At the call site, failures are handled using `try` and `catch`.
+
+**Block form.** Wraps one or more constructions in a shared failure scope:
+
+```
+try {
+    def money = new Money(amount: -1.0, currency: .Usd);
+} catch .NegativeAmount na {
+    na.message;
+} catch .ExceedsLimit {
+    // handle
+}
+```
+
+**Inline form.** Propagates the failure to the caller:
+
+```
+def money = try new Money(amount: 1.0, currency: .Usd);
+```
+
+`catch` branches follow the same dot notation as the rest of the language. When a case carries associated data, a binding name after the case gives access to the instance:
+
+```
+catch .NegativeAmount na {
+    na.message;  // access associated data by property name
+}
+```
+
+`catch` without a case name is a catch-all fallback:
+
+```
+try {
+    def money = new Money(amount: -1.0, currency: .Usd);
+} catch .NegativeAmount na {
+    na.message;
+} catch {
+    // all other failures
 }
 ```
 
@@ -962,8 +1048,6 @@ doWork() {
 
 > The annotation system, including how annotations are declared, how targeting works, and how annotations interact with the compiler, is documented separately. See [Annotations/README.md](Annotations/README.md).
 
-The following is a summary of all built-in annotations shipped with the standard library.
-
 ### Visibility and Exposure
 
 | Annotation | Valid On | Effect |
@@ -976,14 +1060,14 @@ The following is a summary of all built-in annotations shipped with the standard
 | Annotation | Valid On | Effect |
 |---|---|---|
 | `@Mutable` | Local variables, `object` and `service` properties | Allows reassignment of a local variable, or opts a property into mutability. Compiler warning if used alongside a `set` body. |
-| `@Const` | Functions | Disallows any mutation in the entire execution path of the function |
+| `@Const` | Functions | Disallows any mutation in the entire execution path of the function. |
 
 ### Contracts and Implementation
 
 | Annotation | Valid On | Effect |
 |---|---|---|
-| `@Implements(Contract, ...)` | `object`, `service` | Declares that this type fulfills one or more contracts. When used with `Makeable`, disables direct construction and gates instantiation through `make`. |
-| `@Alias("op")` | `contract` method signatures | Allows the method to be called using an operator or shorthand symbol |
+| `@Implements(Contract, ...)` | `object`, `service` | Declares that this type fulfills one or more contracts. |
+| `@Alias("op")` | `contract` method signatures | Allows the method to be called using an operator or shorthand symbol. |
 
 ### Inheritance
 
@@ -996,10 +1080,10 @@ The following is a summary of all built-in annotations shipped with the standard
 
 | Annotation | Valid On | Effect |
 |---|---|---|
-| `@Singleton(Contract)` | Module binding | One instance for the lifetime of the application |
-| `@Scoped(Contract)` | Module binding | One instance per logical scope (e.g., a request or session) |
-| `@Transient(Contract)` | Module binding | A fresh instance every time it is needed |
-| `@Mock(Module)` | `module` | Shadows bindings from the target module for testing purposes |
+| `@Singleton(Contract)` | Module binding | One instance for the lifetime of the application. |
+| `@Scoped(Contract)` | Module binding | One instance per logical scope (e.g., a request or session). |
+| `@Transient(Contract)` | Module binding | A fresh instance every time it is needed. |
+| `@Mock(Module)` | `module` | Shadows bindings from the target module for testing purposes. |
 
 ### Tagging
 
@@ -1015,10 +1099,10 @@ The following is a summary of all built-in annotations shipped with the standard
 - Should `contract` support default implementations?
 - What is the concurrency model? Does the `@Tag` system extend to async boundaries?
 - What is the full null safety spec beyond `String?`?
-- How does error handling work? Exceptions, result types, or something new? This directly affects how `Result` returned from `make` is handled at the call site.
 - Should generics support variance annotations?
 - Should mutable local variables use `@Mutable` as an annotation or a dedicated keyword?
 - Can a `conditions` block reference variables outside its declaration scope, or is it always bound to a single variable?
-- `Self.Input` implies type-level property access on a nested type declaration. The full spec for nested types and type-level property access is unresolved.
-- When should `@Implements(Makeable)` be required vs. optional? The current model (opt-in) is provisional. The longer-term direction is to make safe construction the default.
+- Can `new` overloads delegate to one another, and if so, what is the syntax?
+- Should `catch` branches be exhaustive and compiler-enforced, given that `throw` codes are enum values?
+- Is `self` valid inside `service` members, or is it scoped to `object` only?
 - For annotation-specific open questions, see [Annotations/README.md](Annotations/README.md).
