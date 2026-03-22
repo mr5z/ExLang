@@ -886,7 +886,7 @@ object UserRole {
 
 ### `if` and `no`
 
-`if` handles conditional branching. `no` is the fallback branch, equivalent to `else` in other languages. There is no `else if`; multi-branch logic belongs in `switch` or `conditions`, both of which are more explicit and compiler-enforced. This is a deliberate design decision: `else if` chains scale poorly, are easy to get wrong, and offer no exhaustiveness guarantees. `conditions` covers the same ground with more structure.
+`if` handles conditional branching. `no` is the fallback branch, equivalent to `else` in other languages. There is no `else if`; it is not part of the language.
 
 ```
 if x == y {
@@ -896,6 +896,8 @@ no {
     doThat();
 }
 ```
+
+`if`/`no` is for binary decisions. When more than two outcomes are possible, use `switch` over an enum or a `conditions` block instead. Those forms are exhaustiveness-checked by the compiler; `if`/`no` chains are not.
 
 ---
 
