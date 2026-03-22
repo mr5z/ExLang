@@ -79,10 +79,11 @@ These keywords are syntax primitives that operate on types rather than defining 
 | Keyword | Purpose |
 |---|---|
 | `def` | Binding declaration. Binds a name to a value; does not prescribe how the value is constructed. |
-| `new` | Construction entry point for `object` types. Always a member of the object. |
+| `new` | Call site construction keyword. Used externally to request an instance of an `object` type. |
+| `init` | Construction entry point declared inside `object` types. The body the compiler runs when `new` is called. May be overloaded. |
 | `conditions` | Classification. Promotes arbitrary runtime predicates into a named, exhaustive set of cases that can be switched over. |
 | `self` | Refers to the current instance. Valid inside `object` members. |
-| `throw` | Signals a failure from within a `new` body. Must be followed by an enum case. |
+| `throw` | Signals a failure from within an `init` body. Must be followed by an enum case. |
 | `try` | Marks a construction expression or block as potentially failing. |
 
 ---
@@ -119,6 +120,8 @@ def point = Point { x: 1.0, y: 2.0 };
 def user = UserResponse { id: 1, name: "Alice", email: "alice@example.com" };
 ```
 
+The `{}` syntax signals that no logic runs during construction: the compiler fills properties directly. A type that requires validation or custom initialization logic belongs in an `object`, not a `dto`.
+
 ---
 
 ### `object`
@@ -129,16 +132,18 @@ Properties are read-only by default. Use `@Mutable` to opt into mutability per p
 
 #### Construction
 
-Objects are never constructed directly from outside the type. All construction goes through a `new` member, which is the designated entry point. `new` may be overloaded. The compiler enforces that every `new` body assigns all declared properties before returning; an unassigned property is a compile error.
+Objects are never constructed directly from outside the type. All construction goes through an `init` member, which is the designated entry point declared inside the type body. `init` may be overloaded. The compiler enforces that every `init` body assigns all declared properties before returning; an unassigned property is a compile error.
 
-Inside `new`, `self` refers to the instance being constructed and is used to assign properties:
+At the call site, `new` is used to request construction. `new` does not prescribe how the object is built; it delegates to the appropriate `init` body.
+
+Inside `init`, `self` refers to the instance being constructed and is used to assign properties:
 
 ```
 object Money {
     amount: f32;
     currency: Currency;
 
-    new(amount: f32, currency: Currency) {
+    init(amount: f32, currency: Currency) {
         if amount < 0 {
             throw .NegativeAmount { message: "Amount cannot be negative" };
         }
@@ -164,6 +169,10 @@ Properties can opt into mutability with `@Mutable`. Custom getter and setter log
 ```
 object Temperature {
     _value: f32;
+
+    init(celsius: f32) {
+        _value = celsius;
+    }
 
     celsius: f32 {
         get => _value;
@@ -816,18 +825,20 @@ advance() {
 
 ```
 def x = 0;  // numeric literal, type inferred
-def point = Point { x: 1.0, y: 2.0 };           // dto, direct construction
+def point = Point { x: 1.0, y: 2.0 };               // dto, direct construction
 def money = new Money(amount: 1.0, currency: .Usd);  // object, through new
 ```
 
 Construction rules by type:
 
-| Type | Construction | Can Fail |
-|---|---|---|
-| `dto` | Direct, using `{}` syntax | No |
-| `object` | Through `new`, always | Yes |
-| `service` | Never directly, resolved by module | N/A |
-| `enum` | Cases referenced via dot notation | No |
+| Type | Internal Entry Point | Call Site Syntax | Can Fail |
+|---|---|---|---|
+| `dto` | None (compiler-managed) | `{}` directly | No |
+| `object` | `init` | `new Type(...)` | Yes |
+| `service` | None (compiler-managed) | Never directly, resolved by module | N/A |
+| `enum` | None | Cases referenced via dot notation | No |
+
+The distinction between `init` and `new` is intentional. `init` is the internal declaration: it is what the type author writes to describe how an instance is set up. `new` is the external call site keyword: it is what the caller writes to request an instance. They are two sides of the same operation and never appear in each other's context.
 
 #### Type Inference
 
@@ -951,7 +962,7 @@ switch WaterPhase {
 
 ### `throw`, `try`, and `catch`
 
-`throw` signals a failure from within a `new` body. It must be followed by an enum case, with an optional associated data block. The enum case acts as the error code; associated data is the conventional place for a human-readable message.
+`throw` signals a failure from within an `init` body. It must be followed by an enum case, with an optional associated data block. The enum case acts as the error code; associated data is the conventional place for a human-readable message.
 
 ```
 enum MoneyError {
@@ -965,7 +976,7 @@ object Money {
     amount: f32;
     currency: Currency;
 
-    new(amount: f32, currency: Currency) {
+    init(amount: f32, currency: Currency) {
         if amount < 0 {
             throw .NegativeAmount { message: "Amount cannot be negative" };
         }
@@ -1102,7 +1113,7 @@ doWork() {
 - Should generics support variance annotations?
 - Should mutable local variables use `@Mutable` as an annotation or a dedicated keyword?
 - Can a `conditions` block reference variables outside its declaration scope, or is it always bound to a single variable?
-- Can `new` overloads delegate to one another, and if so, what is the syntax?
+- Can `init` overloads delegate to one another, and if so, what is the syntax?
 - Should `catch` branches be exhaustive and compiler-enforced, given that `throw` codes are enum values?
 - Is `self` valid inside `service` members, or is it scoped to `object` only?
 - For annotation-specific open questions, see [Annotations/README.md](Annotations/README.md).
