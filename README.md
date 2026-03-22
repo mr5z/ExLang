@@ -81,7 +81,7 @@ These keywords are syntax primitives that operate on types rather than defining 
 | `def` | Binding declaration. Binds a name to a value; does not prescribe how the value is constructed. |
 | `new` | Call site construction keyword. Used externally to request an instance of an `object` type. |
 | `init` | Construction entry point declared inside `object` types. The body the compiler runs when `new` is called. May be overloaded. |
-| `conditions` | Classification. Promotes arbitrary runtime predicates into a named, exhaustive set of cases that can be switched over. |
+| `conditions` | Classification. Promotes arbitrary runtime predicates into a named, exhaustive set of cases that can be switched over. Scoped to the block in which it is declared. |
 | `self` | Refers to the current instance. Valid inside `object` members. |
 | `throw` | Signals a failure from within an `init` body. Must be followed by an enum case. |
 | `try` | Marks a construction expression or block as potentially failing. |
@@ -430,7 +430,7 @@ module TestModule {
 
 ### `enum`
 
-An `enum` declares a named set of cases. Each case may optionally carry associated data, declared using the same `{}` property block syntax used by other types. Cases with no associated data are declared with a bare name followed by `;`.
+An `enum` declares a named set of cases. Each case may optionally carry associated data, declared using a `{}` block. Cases with no associated data are declared with a bare name followed by `;`.
 
 ```
 enum Direction {
@@ -461,28 +461,30 @@ Enums are value types. Two enum values are equal if they are the same case and c
 
 ### `conditions`
 
-`conditions` promotes arbitrary runtime predicates into a named set of cases that can be switched over. Each case is a named predicate. Cases are evaluated top to bottom; the first matching case wins.
+`conditions` promotes arbitrary runtime predicates into a named, exhaustive set of cases that can be switched over. It is always local to the block in which it is declared. Each case is a named predicate. Cases are evaluated top to bottom; the first matching case wins.
 
-The developer is responsible for declaring cases that cover all possible states. Any `switch` over a `conditions` block must be exhaustive: the compiler rejects missing cases, the same rule that applies to enum-based `switch`.
+The subjects being classified are declared as parameters in the `conditions` signature. At the call site, the matching arguments are passed in the same order.
 
 ```
-conditions WaterPhase {
+conditions WaterPhase(temp: f32) {
     Ice:    temp < 0;
     Liquid: temp < 100;
     Steam:  temp >= 100;
 }
 
-switch WaterPhase {
+switch WaterPhase(temp) {
     case .Ice    => freeze();
     case .Liquid => liquid();
     case .Steam  => boil();
 }
 ```
 
+The developer is responsible for declaring cases that cover all possible states. Any `switch` over a `conditions` block must be exhaustive: the compiler rejects missing cases.
+
 The compiler warns if declared predicates overlap, as an unreachable case is almost certainly a bug:
 
 ```
-conditions Access {
+conditions Access(isBanned: Bool, isAdmin: Bool) {
     Banned:      isBanned;
     BannedAdmin: isBanned && isAdmin;  // warning: unreachable, Banned covers this
     Allowed:     !isBanned;
@@ -492,23 +494,23 @@ conditions Access {
 `switch` over a `conditions` block works in both statement and expression forms:
 
 ```
-def label = switch WaterPhase {
+def label = switch WaterPhase(temp) {
     case .Ice    => "ice";
     case .Liquid => "liquid";
     case .Steam  => "steam";
 }
 ```
 
-The key advantage of `conditions` over a plain `if`/`no` chain is that the predicate set is declared once and reused across multiple `switch` sites. If the classification logic changes, it changes in one place:
+The key advantage of `conditions` is that the predicate set is declared once and reused across multiple `switch` sites. If the classification logic changes, it changes in one place:
 
 ```
-switch WaterPhase {
+switch WaterPhase(temp) {
     case .Ice    => applyIceShader();
     case .Liquid => applyWaterShader();
     case .Steam  => applySteamShader();
 }
 
-switch WaterPhase {
+switch WaterPhase(temp) {
     case .Ice    => playIceSound();
     case .Liquid => playWaterSound();
     case .Steam  => playSteamSound();
@@ -947,13 +949,19 @@ See [`conditions` in the Declaration Reference](#conditions) for the full defini
 `switch` over a `conditions` block supports both statement and expression forms. Because the predicate set is declared once, multiple `switch` sites stay consistent automatically:
 
 ```
-switch WaterPhase {
+conditions WaterPhase(temp: f32) {
+    Ice:    temp < 0;
+    Liquid: temp < 100;
+    Steam:  temp >= 100;
+}
+
+switch WaterPhase(temp) {
     case .Ice    => applyIceShader();
     case .Liquid => applyWaterShader();
     case .Steam  => applySteamShader();
 }
 
-switch WaterPhase {
+switch WaterPhase(temp) {
     case .Ice    => playIceSound();
     case .Liquid => playWaterSound();
     case .Steam  => playSteamSound();
@@ -1114,7 +1122,6 @@ doWork() {
 - What is the full null safety spec beyond `String?`?
 - Should generics support variance annotations?
 - Should mutable local variables use `@Mutable` as an annotation or a dedicated keyword?
-- Can a `conditions` block reference variables outside its declaration scope, or is it always bound to a single variable?
 - Can `init` overloads delegate to one another, and if so, what is the syntax?
 - Should `catch` branches be exhaustive and compiler-enforced, given that `throw` codes are enum values?
 - Is `self` valid inside `service` members, or is it scoped to `object` only?
