@@ -473,7 +473,7 @@ service OrderService(
     }
 
     routeOrder(order: OrderRequest) {
-        conditions OrderStatus {
+        conditions OrderStatus(order: OrderRequest) {
             Cancelled: order.isCancelled;
             Pending:   !order.isPaid && !order.isCancelled;
             Paid:      order.isPaid && !order.isShipped;
@@ -549,7 +549,14 @@ service OrderReportService(
     @Const
     @Hidden
     priorityLabel(order: OrderRequest): String {
-        return switch OrderStatus(order) {
+        conditions orderPriority(order: OrderRequest) {
+            Cancelled: order.isCancelled;
+            Pending:   !order.isPaid && !order.isCancelled;
+            Paid:      order.isPaid && !order.isShipped;
+            Shipped:   order.isPaid && order.isShipped;
+        }
+
+        return switch orderPriority(order) {
             case .Cancelled => "none";
             case .Pending   => "high";
             case .Paid      => "medium";
