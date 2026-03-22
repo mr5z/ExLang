@@ -30,7 +30,7 @@ annotation Deprecated {
 }
 ```
 
-Annotations with parameters declare them as `init` arguments:
+Annotations with parameters declare them as additional `init` arguments, after `context`:
 
 ```
 annotation Alias {
@@ -39,6 +39,8 @@ annotation Alias {
     }
 }
 ```
+
+`init` is the standard construction entry point across all types in ExLang that declare one. For `annotation`, it is called by the compiler at the point the annotation is applied. It is not callable directly and cannot be overloaded, since an annotation is always applied in exactly one way.
 
 ---
 
