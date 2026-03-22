@@ -451,7 +451,7 @@ enum MoneyError {
 Enum cases are referenced using dot notation, with the compiler inferring the enum type from context:
 
 ```
-def dir = .North;
+def dir = Direction.North;
 throw .NegativeAmount { message: "Amount cannot be negative" };
 ```
 
