@@ -97,7 +97,7 @@ object Money {
     amount: f32;
     currency: String;
 
-    new(amount: f32, currency: String) {
+    init(amount: f32, currency: String) {
         if amount < 0 {
             throw .NegativeAmount { message: "Amount cannot be negative" };
         }
@@ -141,7 +141,7 @@ object Money {
 object Discount {
     rate: f32;
 
-    new(rate: f32) {
+    init(rate: f32) {
         self.rate = rate < 0.0 ? 0.0 : rate > 1.0 ? 1.0 : rate;
     }
 
@@ -156,7 +156,7 @@ object Discount {
 object SeasonalDiscount {
     label: String;
 
-    new(rate: f32, label: String) {
+    init(rate: f32, label: String) {
         self.rate = rate < 0.0 ? 0.0 : rate > 1.0 ? 1.0 : rate;
         self.label = label;
     }
@@ -177,7 +177,7 @@ object Receipt {
     total: Money;
     items: List<OrderItem>;
 
-    new(orderId: u32, total: Money, items: List<OrderItem>) {
+    init(orderId: u32, total: Money, items: List<OrderItem>) {
         self.orderId = orderId;
         self.total = total;
         self.items = items;
@@ -221,7 +221,7 @@ contract Discountable {
 object Cart {
     items: List<OrderItem>;
 
-    new(items: List<OrderItem>) {
+    init(items: List<OrderItem>) {
         self.items = items;
     }
 
